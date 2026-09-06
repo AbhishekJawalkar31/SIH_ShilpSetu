@@ -1,4 +1,4 @@
-ShilpSetu Backend
+#ShilpSetu Backend
 FastAPI backend for the ShilpSetu artisan marketplace. This branch contains
 the API layer and backend orchestration used by the artisan frontend:
 AI-assisted catalogue generation with Gemini
