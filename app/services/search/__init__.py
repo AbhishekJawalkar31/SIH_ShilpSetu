@@ -1,0 +1,1 @@
+"""Search and intent extraction service boundary."""
