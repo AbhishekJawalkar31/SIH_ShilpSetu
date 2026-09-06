@@ -1,0 +1,1 @@
+"""Authentication and Supabase user-identity mapping."""
