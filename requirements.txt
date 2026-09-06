@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-multipart
+pydantic-settings
+google-genai
+sarvamai
+Pillow
+pytest
+httpx
