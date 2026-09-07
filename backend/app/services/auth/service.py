@@ -39,6 +39,7 @@ class AuthService:
 
         token_payload = {
             "sub": str(user.id),
+            "name": user.name,
             "email": user.email,
             "role": user.role,
             "artisan_id": str(user.artisan_id) if user.artisan_id else None,
@@ -77,6 +78,7 @@ class AuthService:
 
         token_payload = {
             "sub": str(user.id),
+            "name": user.name,
             "email": user.email,
             "role": user.role,
             "artisan_id": str(user.artisan_id) if user.artisan_id else None,

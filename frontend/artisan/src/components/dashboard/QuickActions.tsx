@@ -13,9 +13,9 @@ interface QuickActionsProps {
 export const QuickActions: React.FC<QuickActionsProps> = ({
   lang,
   onActionClick,
-  productCount = 12,
-  newOrdersCount = 3,
-  earnings = "₹12,340",
+  productCount = 0,
+  newOrdersCount = 0,
+  earnings = "₹0",
 }) => {
   const t = translations[lang];
 

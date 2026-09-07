@@ -245,6 +245,36 @@ The exact language-code format must be standardized by the backend implementatio
 
 ---
 
+# 7.1. Upload Product Image
+
+## `POST /api/products/upload-image`
+
+Uploads an original product photograph (JPEG, PNG, WebP, HEIC) up to 5MB and returns a persistent, servable image URL for product creation.
+
+### Request
+
+`multipart/form-data`
+
+- `image`: binary file (`image/jpeg`, `image/png`, `image/webp`, `image/heic`)
+
+### Response (`201 Created`)
+
+```json
+{
+  "image_url": "/uploads/products/550e8400-e29b-41d4-a716-446655440000.png",
+  "filename": "550e8400-e29b-41d4-a716-446655440000.png"
+}
+```
+
+### Errors
+
+- `422 INVALID_IMAGE_TYPE`: File type not supported.
+- `422 EMPTY_IMAGE`: Uploaded file is 0 bytes.
+- `422 IMAGE_TOO_LARGE`: File exceeds 5MB limit.
+- `422 CORRUPT_IMAGE`: File is not a valid image.
+
+---
+
 # 8. Create Product
 
 ## `POST /api/products`

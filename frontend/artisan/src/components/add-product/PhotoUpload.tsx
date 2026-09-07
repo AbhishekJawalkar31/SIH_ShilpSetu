@@ -1,4 +1,6 @@
-import React, { useState, useRef } from "react";
+"use client";
+
+import React, { useState, useRef, useEffect } from "react";
 import {
   Camera,
   Image as ImageIcon,
@@ -6,305 +8,489 @@ import {
   MicOff,
   Sparkles,
   RefreshCw,
-  Sliders,
+  Trash2,
+  AlertCircle,
+  CheckCircle2,
   Volume2,
-  CheckCircle,
+  FileText,
 } from "lucide-react";
 import { translations, Language } from "../../lib/i18n";
-import { transcribeSpeech } from "../../services/api";
+import { api, ApiError } from "../../services/apiClient";
 
 interface PhotoUploadProps {
   lang: Language;
+  initialImageFile?: File | Blob | null;
+  initialImagePreview?: string | null;
+  initialVoiceText?: string;
   onGenerate: (imageFile: File | Blob, voiceText: string) => void;
+  onManualEntry?: (imageFile: File | Blob, voiceText: string) => void;
   isGenerating: boolean;
 }
 
 export const PhotoUpload: React.FC<PhotoUploadProps> = ({
   lang,
+  initialImageFile = null,
+  initialImagePreview = null,
+  initialVoiceText = "",
   onGenerate,
+  onManualEntry,
   isGenerating,
 }) => {
   const t = translations[lang];
 
-  // Default sample image matches the jute tote bag from prototype screenshot!
-  const defaultSampleImage =
-    "https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600";
-
-  const [imagePreview, setImagePreview] = useState<string>(defaultSampleImage);
-  const [imageFile, setImageFile] = useState<File | Blob | null>(null);
-  const [beforeAfterMode, setBeforeAfterMode] = useState<"after" | "before">("after");
-  const [photoIndex] = useState<number>(1);
-  const [totalPhotos] = useState<number>(4);
+  // Image state — starts null unless returning from a later step
+  const [imageFile, setImageFile] = useState<File | Blob | null>(
+    initialImageFile
+  );
+  const [imagePreview, setImagePreview] = useState<string | null>(
+    initialImagePreview
+  );
+  const [imageError, setImageError] = useState<string | null>(null);
 
   // Voice recording state
   const [isRecording, setIsRecording] = useState<boolean>(false);
-  const [voiceText, setVoiceText] = useState<string>("");
   const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+  const [voiceText, setVoiceText] = useState<string>(initialVoiceText);
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
 
-  // Handle file selection
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup blob URLs and timers on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (
+        mediaRecorderRef.current &&
+        mediaRecorderRef.current.state === "recording"
+      ) {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, []);
+
+  // Handle image file selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (!file.type.startsWith("image/")) {
+        setImageError(
+          lang === "hi"
+            ? "कृपया एक मान्य छवि फ़ाइल (JPEG, PNG, WebP) चुनें।"
+            : "Please select a valid image file (JPEG, PNG, WebP)."
+        );
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        setImageError(
+          lang === "hi"
+            ? "फ़ाइल का आकार 5MB से कम होना चाहिए।"
+            : "Image file exceeds 5MB size limit."
+        );
+        return;
+      }
+      setImageError(null);
       setImageFile(file);
-      const url = URL.createObjectURL(file);
-      setImagePreview(url);
+      const previewUrl = URL.createObjectURL(file);
+      setImagePreview(previewUrl);
     }
   };
 
-  // Voice Recording Simulator with Web Audio / Mic API
+  // Start real browser MediaRecorder
   const startRecording = async () => {
-    setIsRecording(true);
-    setRecordingSeconds(0);
-    timerRef.current = setInterval(() => {
-      setRecordingSeconds((prev) => prev + 1);
-    }, 1000);
-  };
-
-  const stopRecording = async () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    setIsRecording(false);
-    setIsTranscribing(true);
+    setVoiceNotice(null);
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setVoiceNotice(t.audioNotSupported);
+      return;
+    }
 
     try {
-      // Create empty blob or audio payload
-      const mockAudioBlob = new Blob(["audio-recording"], { type: "audio/webm" });
-      const result = await transcribeSpeech(mockAudioBlob, lang);
-      setVoiceText(result.text);
-    } catch {
-      setVoiceText(
-        lang === "hi"
-          ? "यह सुनहरे जूट से बना हाथ से बुना बैग है, होटल और उपहार के लिए उपयुक्त है।"
-          : "Handwoven natural jute tote bag with floral pattern, perfect for hotel gifting."
-      );
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+
+      let mimeType = "audio/webm";
+      if (
+        typeof MediaRecorder.isTypeSupported === "function" &&
+        MediaRecorder.isTypeSupported("audio/webm")
+      ) {
+        mimeType = "audio/webm";
+      } else if (
+        typeof MediaRecorder.isTypeSupported === "function" &&
+        MediaRecorder.isTypeSupported("audio/mp4")
+      ) {
+        mimeType = "audio/mp4";
+      }
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        // Stop all tracks to release mic hardware
+        stream.getTracks().forEach((track) => track.stop());
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (audioBlob.size > 0) {
+          const audioUrl = URL.createObjectURL(audioBlob);
+          setRecordedAudioUrl(audioUrl);
+          await handleTranscribe(audioBlob);
+        }
+      };
+
+      recorder.start();
+      setIsRecording(true);
+      setRecordingSeconds(0);
+      timerRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1);
+      }, 1000);
+    } catch (err: any) {
+      console.warn("Microphone access error:", err);
+      setVoiceNotice(t.micDenied);
+    }
+  };
+
+  // Stop recording
+  const stopRecording = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setIsRecording(false);
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state === "recording"
+    ) {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  // Transcribe audio using backend Sarvam Saaras API
+  const handleTranscribe = async (audioBlob: Blob) => {
+    setIsTranscribing(true);
+    setVoiceNotice(null);
+    try {
+      const res = await api.transcribeSpeech(audioBlob, lang);
+      if (res && res.text) {
+        setVoiceText((prev) =>
+          prev ? `${prev} ${res.text}` : res.text
+        );
+      }
+    } catch (err: any) {
+      console.warn("Speech transcription non-blocking failure:", err);
+      setVoiceNotice(t.transcriptionFailed);
     } finally {
       setIsTranscribing(false);
     }
   };
 
-  const handleSubmit = async () => {
-    let finalFile = imageFile;
-    if (!finalFile) {
-      // Fetch default sample image as blob if user didn't upload a new one
-      try {
-        const res = await fetch(imagePreview);
-        finalFile = await res.blob();
-      } catch {
-        finalFile = new Blob(["sample-image"], { type: "image/jpeg" });
-      }
+  // Clear recorded audio and text
+  const handleClearVoice = () => {
+    setVoiceText("");
+    setRecordedAudioUrl(null);
+    setVoiceNotice(null);
+  };
+
+  // Clear image
+  const handleClearImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+    setImageError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+  };
+
+  // Submit flow
+  const handleGenerate = () => {
+    if (!imageFile) {
+      setImageError(t.selectImageFirst);
+      return;
     }
-    onGenerate(finalFile, voiceText);
+    setImageError(null);
+    onGenerate(imageFile, voiceText);
+  };
+
+  const handleManual = () => {
+    if (!imageFile) {
+      setImageError(t.selectImageFirst);
+      return;
+    }
+    setImageError(null);
+    if (onManualEntry) {
+      onManualEntry(imageFile, voiceText);
+    } else {
+      onGenerate(imageFile, voiceText);
+    }
   };
 
   return (
     <div className="p-4 space-y-4">
-      {/* Hidden File Input */}
+      {/* Hidden File Inputs */}
       <input
-        ref={fileInputRef}
         type="file"
-        accept="image/*"
-        className="hidden"
+        ref={fileInputRef}
         onChange={handleFileChange}
+        accept="image/jpeg,image/png,image/webp,image/heic"
+        className="hidden"
+      />
+      <input
+        type="file"
+        ref={cameraInputRef}
+        onChange={handleFileChange}
+        accept="image/*"
+        capture="environment"
+        className="hidden"
       />
 
-      {/* Image Preview & Enhancement Card */}
-      <div className="relative rounded-3xl overflow-hidden bg-stone-900 border border-warmcream-border shadow-card aspect-[4/3] group">
-        {/* The Image */}
-        <img
-          src={
-            beforeAfterMode === "after"
-              ? imagePreview
-              : "https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=40&w=600" // unenhanced rustic shot
-          }
-          alt="Product Preview"
-          className={`w-full h-full object-cover transition-all duration-300 ${
-            beforeAfterMode === "after"
-              ? "filter contrast-[1.08] saturate-[1.12] brightness-[1.03]"
-              : "filter brightness-[0.92] contrast-[0.95]"
-          }`}
-        />
-
-        {/* Top Badges: Photo Counter & Change button */}
-        <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-auto">
-          <span className="px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-white font-bold text-xs shadow-xs border border-white/20">
-            {photoIndex}/{totalPhotos}
-          </span>
-
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="p-2 rounded-full bg-white/90 text-earthy-title hover:bg-white shadow-md transition-transform active:scale-95 border border-stone-200"
-            title="Upload different photo"
-          >
-            <Camera className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Bottom Floating Bar: AI Enhanced Preview with Before/After Pill */}
-        <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between p-2 rounded-2xl bg-black/65 backdrop-blur-md border border-white/20 text-white">
-          <div className="flex items-center gap-1.5 pl-1.5">
-            <Sparkles className="w-4 h-4 text-amber-300" />
-            <span className="text-xs font-semibold">{t.beforeAfter}</span>
-          </div>
-
-          {/* Before/After Toggle Pill matching screenshot */}
-          <div className="flex items-center bg-white/20 rounded-xl p-0.5 border border-white/10">
-            <button
-              onClick={() => setBeforeAfterMode("before")}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                beforeAfterMode === "before"
-                  ? "bg-white text-stone-900 shadow-xs"
-                  : "text-stone-300 hover:text-white"
-              }`}
-            >
-              {t.before}
-            </button>
-            <button
-              onClick={() => setBeforeAfterMode("after")}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                beforeAfterMode === "after"
-                  ? "bg-terracotta text-white shadow-xs"
-                  : "text-stone-300 hover:text-white"
-              }`}
-            >
-              {t.after}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Upload Buttons for Rural Artisans */}
-      <div className="grid grid-cols-2 gap-2.5">
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="py-2.5 px-3 rounded-2xl bg-white border border-warmcream-border text-earthy-title font-semibold text-xs flex items-center justify-center gap-2 shadow-xs hover:bg-warmcream-muted active:scale-98 transition-all"
-        >
-          <Camera className="w-4 h-4 text-terracotta" />
-          <span>{t.cameraBtn}</span>
-        </button>
-
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="py-2.5 px-3 rounded-2xl bg-white border border-warmcream-border text-earthy-title font-semibold text-xs flex items-center justify-center gap-2 shadow-xs hover:bg-warmcream-muted active:scale-98 transition-all"
-        >
-          <ImageIcon className="w-4 h-4 text-ochre" />
-          <span>{t.galleryBtn}</span>
-        </button>
-      </div>
-
-      {/* Voice & Speech Input Section (Primary for Rural Artisans) */}
+      {/* SECTION 1: Product Photo Card */}
       <div className="bg-white rounded-3xl p-4 border border-warmcream-border shadow-card space-y-3">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-bold text-earthy-title flex items-center gap-1.5">
-            <Volume2 className="w-4 h-4 text-terracotta" />
-            {t.voicePrompt}
-          </label>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-craftgreen-50 text-craftgreen-700 font-semibold border border-craftgreen-200">
-            {lang === "hi" ? "आसान आवाज़ सुविधा" : "Voice First"}
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-earthy-title">
+              {t.uploadTitle} *
+            </h3>
+            <p className="text-[11px] text-earthy-muted mt-0.5">
+              {t.uploadSubtitle}
+            </p>
+          </div>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-terracotta-50 text-terracotta border border-terracotta-200">
+            {imageFile ? "1 Photo Selected" : "Photo Required"}
           </span>
         </div>
 
-        <p className="text-[11px] text-earthy-muted">{t.voiceHint}</p>
+        {/* Image Preview Container */}
+        {imagePreview ? (
+          <div className="space-y-2">
+            <div className="relative w-full h-56 rounded-2xl overflow-hidden bg-stone-100 border border-warmcream-border shadow-inner">
+              <img
+                src={imagePreview}
+                alt="Product Preview"
+                className="w-full h-full object-cover"
+              />
+              <button
+                type="button"
+                onClick={handleClearImage}
+                className="absolute top-2 right-2 p-2 rounded-xl bg-black/60 text-white hover:bg-red-600 transition shadow-md active:scale-95"
+                title="Remove photo"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
 
-        {/* Large Mic Button for Rural Touch Ergonomics */}
-        <div className="flex flex-col items-center justify-center py-2">
-          {!isRecording ? (
-            <button
-              onClick={startRecording}
-              className="flex items-center gap-2.5 px-6 py-3 rounded-full bg-gradient-to-r from-terracotta to-ochre text-white font-bold text-xs shadow-floating hover:brightness-105 active:scale-95 transition-all"
-            >
-              <Mic className="w-5 h-5 animate-pulse" />
-              <span>{t.tapToSpeak}</span>
-            </button>
-          ) : (
-            <div className="flex flex-col items-center gap-2 w-full">
-              <div className="flex items-center gap-2 text-xs font-bold text-red-600 animate-pulse">
-                <span className="w-2.5 h-2.5 bg-red-600 rounded-full" />
-                <span>
+            {/* Replace Photo Buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => cameraInputRef.current?.click()}
+                className="py-2.5 px-3 rounded-xl bg-warmcream-muted hover:bg-stone-200 text-earthy-title text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95 border border-warmcream-border"
+              >
+                <Camera className="w-4 h-4 text-terracotta" />
+                <span>{t.cameraBtn}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="py-2.5 px-3 rounded-xl bg-warmcream-muted hover:bg-stone-200 text-earthy-title text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95 border border-warmcream-border"
+              >
+                <ImageIcon className="w-4 h-4 text-terracotta" />
+                <span>{t.galleryBtn}</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Empty Photo Selector Box */
+          <div className="border-2 border-dashed border-terracotta/30 rounded-2xl p-6 text-center bg-warmcream/40 space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-terracotta-50 text-terracotta flex items-center justify-center mx-auto border border-terracotta-200 shadow-xs">
+              <Camera className="w-7 h-7 stroke-[1.8]" />
+            </div>
+
+            <div>
+              <p className="text-xs font-bold text-earthy-title">
+                {lang === "hi"
+                  ? "उत्पाद की तस्वीर लें या गैलरी से चुनें"
+                  : "Capture product photo or choose from gallery"}
+              </p>
+              <p className="text-[11px] text-earthy-muted mt-1">
+                Supports JPEG, PNG, WebP (up to 5MB)
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5 max-w-xs mx-auto pt-1">
+              <button
+                type="button"
+                onClick={() => cameraInputRef.current?.click()}
+                className="py-3 px-3 rounded-xl bg-terracotta text-white font-bold text-xs shadow-md hover:bg-terracotta-700 active:scale-95 transition flex items-center justify-center gap-1.5"
+              >
+                <Camera className="w-4 h-4" />
+                <span>{t.cameraBtn}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="py-3 px-3 rounded-xl bg-white border border-stone-300 text-earthy-title font-bold text-xs hover:bg-stone-50 active:scale-95 transition flex items-center justify-center gap-1.5 shadow-xs"
+              >
+                <ImageIcon className="w-4 h-4 text-stone-600" />
+                <span>{t.galleryBtn}</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {imageError && (
+          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2 animate-in fade-in">
+            <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+            <p>{imageError}</p>
+          </div>
+        )}
+      </div>
+
+      {/* SECTION 2: Voice Note & Description Card */}
+      <div className="bg-white rounded-3xl p-4 border border-warmcream-border shadow-card space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-earthy-title flex items-center gap-1.5">
+              <Mic className="w-3.5 h-3.5 text-terracotta" />
+              <span>{t.voicePrompt}</span>
+            </h3>
+            <p className="text-[11px] text-earthy-muted mt-0.5">
+              {t.voiceHint}
+            </p>
+          </div>
+          <span className="text-[10px] text-stone-400 font-semibold">
+            {lang === "hi" ? "वैकल्पिक" : "Optional"}
+          </span>
+        </div>
+
+        {/* Audio Recording Controller */}
+        <div className="p-3.5 rounded-2xl bg-warmcream/70 border border-warmcream-border space-y-3">
+          <div className="flex items-center justify-between">
+            {isRecording ? (
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-red-500 animate-ping" />
+                <span className="text-xs font-bold text-red-600">
                   {t.recording} ({recordingSeconds}s)
                 </span>
               </div>
-
-              {/* Simulated Audio Waveform */}
-              <div className="flex items-center justify-center gap-1 h-8 w-full py-1">
-                {[40, 70, 90, 60, 100, 80, 50, 95, 75, 45, 85, 60].map((h, i) => (
-                  <span
-                    key={i}
-                    className="w-1 bg-terracotta rounded-full transition-all duration-150 animate-bounce"
-                    style={{
-                      height: `${h}%`,
-                      animationDelay: `${(i % 5) * 100}ms`,
-                    }}
-                  />
-                ))}
+            ) : isTranscribing ? (
+              <div className="flex items-center gap-2 text-xs font-bold text-terracotta">
+                <div className="w-3.5 h-3.5 border-2 border-terracotta/30 border-t-terracotta rounded-full animate-spin" />
+                <span>{t.transcribing}</span>
               </div>
+            ) : recordedAudioUrl ? (
+              <div className="flex items-center gap-2 text-xs font-bold text-craftgreen">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>{t.audioRecorded}</span>
+              </div>
+            ) : (
+              <span className="text-xs text-earthy-muted">
+                {lang === "hi"
+                  ? "माइक बटन दबाएं और उत्पाद का विवरण बोलें"
+                  : "Tap mic button and describe material, craft, or size"}
+              </span>
+            )}
 
+            {/* Mic Action Buttons */}
+            {isRecording ? (
               <button
+                type="button"
                 onClick={stopRecording}
-                className="flex items-center gap-1.5 px-5 py-2 rounded-full bg-red-600 text-white font-bold text-xs shadow-md active:scale-95"
+                className="py-2 px-4 rounded-xl bg-red-600 text-white text-xs font-bold shadow-md hover:bg-red-700 active:scale-95 transition flex items-center gap-1.5"
               >
-                <MicOff className="w-4 h-4" />
+                <MicOff className="w-3.5 h-3.5" />
                 <span>{t.stopRecording}</span>
               </button>
-            </div>
-          )}
+            ) : (
+              <button
+                type="button"
+                onClick={startRecording}
+                disabled={isTranscribing}
+                className="py-2 px-3.5 rounded-xl bg-terracotta text-white text-xs font-bold shadow-sm hover:bg-terracotta-700 active:scale-95 transition flex items-center gap-1.5 disabled:opacity-60"
+              >
+                <Mic className="w-3.5 h-3.5" />
+                <span>{recordedAudioUrl ? t.reRecord : t.tapToSpeak}</span>
+              </button>
+            )}
+          </div>
 
-          {isTranscribing && (
-            <p className="text-xs text-ochre font-semibold mt-2 flex items-center gap-1">
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              {lang === "hi" ? "आवाज़ समझी जा रही है..." : "Transcribing voice with Sarvam AI..."}
+          {/* Voice Notice if mic denied or failed */}
+          {voiceNotice && (
+            <p className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded-xl border border-amber-200 leading-snug">
+              {voiceNotice}
             </p>
           )}
-        </div>
 
-        {/* Text Input / Transcribed voice output */}
-        <div>
-          <textarea
-            value={voiceText}
-            onChange={(e) => setVoiceText(e.target.value)}
-            rows={2}
-            placeholder={t.typeInstead}
-            className="w-full p-3 rounded-2xl bg-warmcream/80 border border-warmcream-border text-xs text-earthy-title focus:outline-none focus:ring-2 focus:ring-terracotta/30 resize-none"
-          />
+          {/* Transcribed / Manual Textarea */}
+          <div>
+            <label className="block text-[11px] font-semibold text-earthy-title mb-1">
+              {t.typeInstead}
+            </label>
+            <textarea
+              rows={3}
+              value={voiceText}
+              onChange={(e) => setVoiceText(e.target.value)}
+              placeholder={
+                lang === "hi"
+                  ? "जैसे: प्राकृतिक मिट्टी से बना मटका, हस्तनिर्मित नक्काशी, पानी ठंडा रखने के लिए उपयुक्त..."
+                  : "e.g. Handcrafted terracotta water vessel made from river clay, traditional geometric carving, keeps water cool..."
+              }
+              className="w-full text-xs text-earthy-body p-2.5 rounded-xl bg-white border border-warmcream-border focus:outline-none focus:ring-2 focus:ring-terracotta/30 resize-none leading-relaxed shadow-xs"
+            />
+          </div>
+
           {voiceText && (
-            <div className="flex justify-between items-center mt-1 text-[11px] text-craftgreen font-medium">
-              <span className="flex items-center gap-1">
-                <CheckCircle className="w-3 h-3" />
-                {t.audioRecorded}
-              </span>
+            <div className="flex justify-end">
               <button
-                onClick={() => setVoiceText("")}
-                className="text-stone-400 hover:text-earthy-title text-[10px]"
+                type="button"
+                onClick={handleClearVoice}
+                className="text-[11px] text-stone-400 hover:text-red-600 font-medium"
               >
-                Clear
+                {lang === "hi" ? "विवरण साफ़ करें" : "Clear notes"}
               </button>
             </div>
           )}
         </div>
       </div>
 
-      {/* Main Big CTA: Generate Catalogue */}
-      <div className="pt-2">
+      {/* Primary Action Buttons */}
+      <div className="space-y-2 pt-1">
         <button
-          onClick={handleSubmit}
-          disabled={isGenerating}
-          className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-terracotta via-[#BD4E25] to-[#8C3414] text-white font-extrabold text-sm shadow-floating hover:brightness-105 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+          type="button"
+          onClick={handleGenerate}
+          disabled={isGenerating || !imageFile}
+          className="w-full py-4 px-4 rounded-2xl bg-gradient-to-r from-terracotta to-ochre text-white font-black text-sm shadow-floating hover:brightness-105 active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {isGenerating ? (
             <>
-              <RefreshCw className="w-5 h-5 animate-spin" />
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               <span>{t.generating}</span>
             </>
           ) : (
             <>
-              <Sparkles className="w-5 h-5 text-amber-300" />
+              <Sparkles className="w-4 h-4 text-amber-200" />
               <span>{t.generateCatalogueBtn}</span>
             </>
           )}
+        </button>
+
+        {/* Secondary Manual Entry Option */}
+        <button
+          type="button"
+          onClick={handleManual}
+          disabled={isGenerating || !imageFile}
+          className="w-full py-2.5 px-3 text-xs font-bold text-earthy-muted hover:text-terracotta transition flex items-center justify-center gap-1 disabled:opacity-50"
+        >
+          <FileText className="w-3.5 h-3.5" />
+          <span>{t.continueManuallyBtn}</span>
         </button>
       </div>
     </div>
   );
 };
-

@@ -13,7 +13,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   activeScreen,
   onNavigate,
   lang,
-  pendingOrdersCount = 3,
+  pendingOrdersCount = 0,
 }) => {
   const t = translations[lang];
 

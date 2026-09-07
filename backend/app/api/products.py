@@ -1,9 +1,10 @@
-from __future__ import annotations
+import io
+from pathlib import Path
+from uuid import UUID, uuid4
 
-from uuid import UUID
-
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import JSONResponse
+from PIL import Image, UnidentifiedImageError
 
 from app.db.exceptions import DatabaseError
 from app.schemas.product import ProductListResponse, ProductResponse
@@ -15,9 +16,20 @@ from app.services.product.write_repository import (
     ProductNotFoundError,
     ProductWriteRepository,
 )
-
+from app.core.dependencies import get_current_user_optional
+from app.schemas.auth import AuthUser
 
 router = APIRouter(prefix="/api/products", tags=["products"])
+
+MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB limit matching 002_storage_setup.sql
+ALLOWED_IMAGE_MIME_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+}
+UPLOADS_DIR = Path(__file__).resolve().parent.parent.parent / "uploads" / "products"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def get_product_repository() -> ProductRepository:
@@ -42,8 +54,69 @@ def _error_response(status_code: int, code: str, message: str) -> JSONResponse:
     )
 
 
-from app.core.dependencies import get_current_user_optional
-from app.schemas.auth import AuthUser
+from pydantic import BaseModel
+
+
+class ImageUploadResponse(BaseModel):
+    """Response returned upon successful image upload."""
+
+    image_url: str
+    filename: str
+
+
+@router.post("/upload-image", response_model=ImageUploadResponse, status_code=201)
+async def upload_product_image(
+    image: UploadFile = File(...),
+) -> ImageUploadResponse | JSONResponse:
+    """
+    Upload and persist a product image for public access.
+    Validates file format (JPEG, PNG, WebP, HEIC) and size (<= 5MB).
+    Returns the persistent, servable image URL.
+    """
+    mime_type = image.content_type
+    if not mime_type or mime_type not in ALLOWED_IMAGE_MIME_TYPES:
+        return _error_response(
+            422,
+            "INVALID_IMAGE_TYPE",
+            f"Image must be one of: {', '.join(sorted(ALLOWED_IMAGE_MIME_TYPES))}",
+        )
+
+    try:
+        image_bytes = await image.read()
+    except Exception:
+        return _error_response(422, "INVALID_IMAGE", "Unable to read uploaded image.")
+
+    if not image_bytes:
+        return _error_response(422, "EMPTY_IMAGE", "Uploaded image file is empty.")
+
+    if len(image_bytes) > MAX_IMAGE_SIZE_BYTES:
+        return _error_response(422, "IMAGE_TOO_LARGE", "Image file exceeds 5MB size limit.")
+
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as img:
+            img.verify()
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
+        return _error_response(422, "CORRUPT_IMAGE", "Uploaded file is not a valid image.")
+
+    ext_map = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "image/heic": ".heic",
+    }
+    ext = ext_map.get(mime_type, ".jpg")
+    filename = f"{uuid4()}{ext}"
+    dest_path = UPLOADS_DIR / filename
+    try:
+        dest_path.write_bytes(image_bytes)
+    except Exception:
+        return _error_response(500, "STORAGE_ERROR", "Failed to persist uploaded image.")
+
+    return {
+        "image_url": f"/uploads/products/{filename}",
+        "filename": filename,
+    }
+
 
 
 @router.post("", response_model=ProductResponse, status_code=201)

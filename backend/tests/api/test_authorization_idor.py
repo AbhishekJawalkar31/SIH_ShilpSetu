@@ -167,3 +167,72 @@ def test_role_restriction_buyer_cannot_create_product(client: TestClient) -> Non
     )
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "INSUFFICIENT_ROLE"
+
+
+def test_order_idor_artisan_a_cannot_view_artisan_b_order(client: TestClient) -> None:
+    artisan_a_user_id = uuid4()
+    artisan_a_id = uuid4()
+    artisan_b_id = uuid4()
+    order_id = uuid4()
+    buyer_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    token_artisan_a = create_access_token({
+        "sub": str(artisan_a_user_id),
+        "role": "artisan",
+        "artisan_id": str(artisan_a_id),
+    })
+
+    # Order belongs to Artisan B
+    mock_order = OrderResponse(
+        id=order_id,
+        buyer_id=buyer_id,
+        artisan_id=artisan_b_id,
+        quantity=10,
+        unit_price=100.0,
+        total_price=1000.0,
+        status="confirmed",
+        created_at=now,
+        updated_at=now,
+        items=[
+            OrderItemResponse(
+                id=uuid4(),
+                order_id=order_id,
+                artisan_id=artisan_b_id,
+                quantity=10,
+                unit_price=100.0,
+                total_price=1000.0,
+                created_at=now,
+            )
+        ],
+    )
+
+    with patch("app.api.orders._service.get_order", new=AsyncMock(return_value=mock_order)):
+        response = client.get(
+            f"/api/orders/{order_id}",
+            headers={"Authorization": f"Bearer {token_artisan_a}"},
+        )
+        assert response.status_code == 403
+        assert response.json()["detail"]["code"] == "FORBIDDEN"
+
+
+def test_notification_idor_user_a_cannot_mark_user_b_notification_read(client: TestClient) -> None:
+    from app.services.notification.repository import NotificationNotFoundError
+
+    user_a_id = uuid4()
+    notification_b_id = uuid4()
+
+    token_a = create_access_token({"sub": str(user_a_id), "role": "artisan"})
+
+    with patch(
+        "app.api.notifications._service.mark_as_read",
+        new=AsyncMock(side_effect=NotificationNotFoundError(f"Notification {notification_b_id} not found.")),
+    ) as mock_mark:
+        response = client.patch(
+            f"/api/notifications/{notification_b_id}/read",
+            headers={"Authorization": f"Bearer {token_a}"},
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"]["code"] == "NOTIFICATION_NOT_FOUND"
+        mock_mark.assert_awaited_once_with(notification_b_id, expected_user_id=user_a_id)
+

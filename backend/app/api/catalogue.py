@@ -10,15 +10,47 @@ from PIL import Image, UnidentifiedImageError
 from app.schemas.catalogue import CatalogueGenerationResponse
 from app.services.catalogue.exceptions import CatalogueServiceError
 from app.services.catalogue.providers.gemini import GeminiProviderError
+from app.db.connection import DatabasePoolManager, get_pool_manager
+from app.services.catalogue.pricing import MvpPricingProvider
+from app.services.catalogue.providers.base import CatalogueProvider
+from app.services.catalogue.providers.gemini import (
+    GeminiCatalogueProvider,
+    GeminiConfigurationError,
+    GeminiProviderError,
+)
+from app.services.catalogue.repository import DatabaseComparableProductSource
 from app.services.catalogue.service import CatalogueService
-
 
 router = APIRouter(prefix="/api/catalogue")
 
 
-def get_catalogue_service() -> CatalogueService:
+class _UnconfiguredCatalogueProvider:
+    """Fallback provider when Gemini API key is unconfigured, raising a clean provider error."""
+
+    async def generate_catalogue(
+        self,
+        image_bytes: bytes,
+        mime_type: str,
+        voice_text: str | None,
+    ) -> dict:
+        raise GeminiConfigurationError("Gemini API key is not configured.")
+
+
+def get_catalogue_service(
+    pool_manager: DatabasePoolManager = Depends(get_pool_manager),
+) -> CatalogueService:
     """Provide the configured catalogue service during application composition."""
-    raise RuntimeError("Catalogue service has not been configured.")
+    comparable_source = DatabaseComparableProductSource(pool_manager=pool_manager)
+    pricing_provider = MvpPricingProvider(comparable_source=comparable_source)
+    try:
+        catalogue_provider: CatalogueProvider = GeminiCatalogueProvider()
+    except GeminiConfigurationError:
+        catalogue_provider = _UnconfiguredCatalogueProvider()
+
+    return CatalogueService(
+        pricing_provider=pricing_provider,
+        catalogue_provider=catalogue_provider,
+    )
 
 
 def _error_response(status_code: int, code: str, message: str) -> JSONResponse:

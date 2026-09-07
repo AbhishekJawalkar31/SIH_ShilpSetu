@@ -1,7 +1,10 @@
+"use client";
+
 import React from "react";
-import { CheckCircle2, ArrowRight, PlusCircle, Home, ExternalLink } from "lucide-react";
+import { CheckCircle2, ArrowRight, PlusCircle, Home } from "lucide-react";
 import { translations, Language } from "../../lib/i18n";
 import { Product } from "../../services/types";
+import { resolveBackendUrl } from "../../services/apiClient";
 
 interface PublishSuccessProps {
   product: Product;
@@ -40,7 +43,7 @@ export const PublishSuccess: React.FC<PublishSuccessProps> = ({
       <div className="w-full max-w-xs bg-white rounded-3xl p-3.5 border border-warmcream-border shadow-card flex items-center gap-3 text-left">
         <div className="w-16 h-16 rounded-2xl overflow-hidden bg-stone-100 shrink-0 border border-stone-200">
           <img
-            src={product.image_url}
+            src={resolveBackendUrl(product.image_url)}
             alt={product.title}
             className="w-full h-full object-cover"
           />
@@ -61,6 +64,7 @@ export const PublishSuccess: React.FC<PublishSuccessProps> = ({
       {/* Actions */}
       <div className="w-full max-w-xs space-y-2.5 pt-2">
         <button
+          type="button"
           onClick={onViewListing}
           className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-terracotta to-ochre text-white font-extrabold text-xs shadow-floating hover:brightness-105 active:scale-95 transition-all flex items-center justify-center gap-2"
         >
@@ -69,6 +73,7 @@ export const PublishSuccess: React.FC<PublishSuccessProps> = ({
         </button>
 
         <button
+          type="button"
           onClick={onAddAnother}
           className="w-full py-3 px-4 rounded-2xl bg-white border border-stone-300 text-earthy-title font-bold text-xs hover:bg-stone-50 active:scale-95 transition-all flex items-center justify-center gap-2"
         >
@@ -77,6 +82,7 @@ export const PublishSuccess: React.FC<PublishSuccessProps> = ({
         </button>
 
         <button
+          type="button"
           onClick={onGoHome}
           className="w-full py-2.5 text-earthy-muted font-medium text-xs hover:text-earthy-title flex items-center justify-center gap-1.5"
         >
@@ -87,4 +93,3 @@ export const PublishSuccess: React.FC<PublishSuccessProps> = ({
     </div>
   );
 };
-
