@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   ArrowRight,
   Award,
@@ -37,9 +37,21 @@ import {
   artisans,
   categories,
   initialOrders,
-  products,
+  products as mockProducts,
   userProfile,
 } from "../lib/mockData";
+import {
+  getProducts,
+  getProduct,
+  getArtisan,
+  searchProducts,
+  ApiError,
+} from "../services/api";
+import {
+  adaptBackendProduct,
+  adaptSearchResultItem,
+} from "../services/adapters";
+import { Product as BackendProduct } from "../services/types";
 
 const featuredVideoUrls = [
   "https://pixabay.com/videos/download/video-45455_medium.mp4",
@@ -188,21 +200,129 @@ export default function BuyerApp() {
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true);
 
-  // Cart & Wishlist State
+  // Cart & Wishlist State (Cart remains in-memory as required by scope)
   const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([
-    { product: products[0], quantity: 1 }, // Terracotta Vase ₹850
-    { product: products[1], quantity: 1 }, // Handwoven Scarf ₹1,250
-    { product: products[2], quantity: 1 }, // Silver Jhumkas ₹1,600
+    { product: mockProducts[0], quantity: 1 }, // Terracotta Vase ₹850
+    { product: mockProducts[1], quantity: 1 }, // Handwoven Scarf ₹1,250
+    { product: mockProducts[2], quantity: 1 }, // Silver Jhumkas ₹1,600
   ]);
   const [wishlist, setWishlist] = useState<string[]>(["p1", "p3", "p5"]);
 
   // Shop Filters & Search State
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [activeSearchQuery, setActiveSearchQuery] = useState<string>("");
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [maxPrice, setMaxPrice] = useState<number>(5000);
   const [minRating, setMinRating] = useState<number>(0);
   const [sortBy, setSortBy] = useState<string>("newest");
   const [orderList, setOrderList] = useState<Order[]>(initialOrders);
+
+  // Live Backend Product State
+  const [liveProducts, setLiveProducts] = useState<Product[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState<boolean>(true);
+  const [productError, setProductError] = useState<string | null>(null);
+  const [artisanNameCache, setArtisanNameCache] = useState<Record<string, string>>({});
+
+  // Fetch live products from backend
+  const fetchLiveProducts = useCallback(async (categoryFilter?: string) => {
+    setIsLoadingProducts(true);
+    setProductError(null);
+    try {
+      const filterParams: Record<string, string | number> = {
+        status: "published",
+        limit: 50,
+      };
+      if (categoryFilter && categoryFilter !== "All") {
+        filterParams.category = categoryFilter;
+      }
+      const response = await getProducts(filterParams);
+      const adapted = response.products.map((p) =>
+        adaptBackendProduct(p, artisanNameCache[p.artisan_id])
+      );
+      setLiveProducts(adapted);
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : "Failed to load products from server.";
+      setProductError(msg);
+      setLiveProducts([]);
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  }, [artisanNameCache]);
+
+  // Load products when component mounts or category changes
+  useEffect(() => {
+    if (!activeSearchQuery) {
+      fetchLiveProducts(selectedCategory);
+    }
+  }, [selectedCategory, activeSearchQuery, fetchLiveProducts]);
+
+  // Handle Semantic Search
+  const handleExecuteSearch = useCallback(async (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setActiveSearchQuery("");
+      setSearchError(null);
+      fetchLiveProducts(selectedCategory);
+      return;
+    }
+    setActiveSearchQuery(trimmed);
+    setIsSearching(true);
+    setSearchError(null);
+    try {
+      const response = await searchProducts({
+        query: trimmed,
+        require_full_capacity: false,
+      });
+      const adapted = response.results.map((item) =>
+        adaptSearchResultItem(item, artisanNameCache[item.artisan_id])
+      );
+      setLiveProducts(adapted);
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : "Semantic search failed. Please try again.";
+      setSearchError(msg);
+      setLiveProducts([]);
+    } finally {
+      setIsSearching(false);
+    }
+  }, [selectedCategory, fetchLiveProducts, artisanNameCache]);
+
+  // Clear search and restore live products
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery("");
+    setActiveSearchQuery("");
+    setSearchError(null);
+    fetchLiveProducts(selectedCategory);
+  }, [selectedCategory, fetchLiveProducts]);
+
+  // Select Product and load full backend details if needed
+  const handleSelectProduct = useCallback(async (prod: Product) => {
+    setSelectedProduct(prod);
+    // Fetch live backend detail if it's a valid backend UUID
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(prod.id);
+    if (isUuid) {
+      try {
+        const liveDetail = await getProduct(prod.id);
+        let artisanName = prod.artisan;
+        let artisanLoc = prod.artisanLocation;
+        if (liveDetail.artisan_id && !artisanNameCache[liveDetail.artisan_id]) {
+          try {
+            const artisanProf = await getArtisan(liveDetail.artisan_id);
+            artisanName = artisanProf.business_name || artisanProf.name;
+            artisanLoc = artisanProf.location || [artisanProf.city, artisanProf.state].filter(Boolean).join(", ") || "India";
+            setArtisanNameCache((prev) => ({ ...prev, [liveDetail.artisan_id]: artisanName }));
+          } catch {
+            // Non-critical: continue with available name
+          }
+        }
+        setSelectedProduct(adaptBackendProduct(liveDetail, artisanName, artisanLoc));
+      } catch {
+        // Fallback to already adapted product
+      }
+    }
+  }, [artisanNameCache]);
 
   // Cart Calculations
   const cartSubtotal = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
@@ -271,17 +391,19 @@ export default function BuyerApp() {
     setDashboardTab("orders");
   };
 
-  // Filtered Products
-  const filteredProducts = products.filter((p) => {
-    const matchesSearch =
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.artisan.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.category.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === "All" || p.category === selectedCategory;
-    const matchesPrice = p.price <= maxPrice;
-    const matchesRating = p.rating >= minRating;
-    return matchesSearch && matchesCategory && matchesPrice && matchesRating;
-  });
+  // Filtered and Sorted Live Products
+  const filteredProducts = liveProducts
+    .filter((p) => {
+      const matchesPrice = p.price <= maxPrice;
+      const matchesRating = p.rating >= minRating;
+      return matchesPrice && matchesRating;
+    })
+    .sort((a, b) => {
+      if (sortBy === "price-low") return a.price - b.price;
+      if (sortBy === "price-high") return b.price - a.price;
+      if (sortBy === "rating") return b.rating - a.rating;
+      return 0; // default newest/received order
+    });
 
   return (
     <div className="min-h-screen bg-ivory text-ink flex flex-col selection:bg-terracotta selection:text-white">
@@ -346,17 +468,43 @@ export default function BuyerApp() {
 
           {/* Header Search Bar */}
           <div className="hidden lg:flex items-center flex-1 max-w-sm mx-6">
-            <div className="relative w-full">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setActiveView("shop");
+                handleExecuteSearch(searchQuery);
+              }}
+              className="relative w-full"
+            >
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setActiveView("shop")}
-                placeholder="Search for crafts, artisans..."
-                className="w-full rounded-full border border-[#E0D5C5] bg-white/90 py-2 pl-4 pr-10 text-xs sm:text-sm text-ink placeholder:text-ink/40 outline-none transition focus:border-forest focus:ring-2 focus:ring-forest/10"
+                placeholder="Semantic AI search (e.g. jute bags under ₹700)..."
+                className="w-full rounded-full border border-[#E0D5C5] bg-white/90 py-2 pl-4 pr-16 text-xs sm:text-sm text-ink placeholder:text-ink/40 outline-none transition focus:border-forest focus:ring-2 focus:ring-forest/10"
               />
-              <Search className="absolute right-3 top-2.5 h-4 w-4 text-ink/40" />
-            </div>
+              <div className="absolute right-2 top-1.5 flex items-center gap-1">
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={handleClearSearch}
+                    className="p-1 text-ink/40 hover:text-ink transition"
+                    title="Clear search"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  disabled={isSearching}
+                  className="p-1.5 text-forest hover:text-terracotta transition"
+                  title="Search"
+                >
+                  <Search className={`h-4 w-4 ${isSearching ? "animate-spin" : ""}`} />
+                </button>
+              </div>
+            </form>
           </div>
 
           {/* Header Actions (Wishlist, Account/Dashboard, Cart) */}
@@ -678,10 +826,10 @@ export default function BuyerApp() {
                 </div>
 
                 <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                  {products.slice(0, 4).map((product, index) => (
+                  {(liveProducts.length > 0 ? liveProducts : mockProducts).slice(0, 4).map((product, index) => (
                     <div
                       key={product.id}
-                      onClick={() => setSelectedProduct(product)}
+                      onClick={() => handleSelectProduct(product)}
                       className="group cursor-pointer rounded-2xl border border-line bg-white p-3 shadow-xs transition duration-300 hover:-translate-y-1 hover:shadow-lg"
                     >
                       <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-paper">
@@ -845,7 +993,7 @@ export default function BuyerApp() {
                       setSelectedCategory("All");
                       setMaxPrice(5000);
                       setMinRating(0);
-                      setSearchQuery("");
+                      handleClearSearch();
                     }}
                     className="text-xs font-semibold text-terracotta hover:underline"
                   >
@@ -927,9 +1075,66 @@ export default function BuyerApp() {
 
               {/* PRODUCT GRID & CONTROLS */}
               <div>
+                {/* Active Semantic Search Indicator Banner */}
+                {activeSearchQuery && (
+                  <div className="mb-6 flex items-center justify-between rounded-2xl bg-forest/10 border border-forest/20 px-5 py-3 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-forest shrink-0" />
+                      <span className="text-ink/80">
+                        Semantic Search Results for:{" "}
+                        <strong className="text-forest">&ldquo;{activeSearchQuery}&rdquo;</strong>
+                      </span>
+                    </div>
+                    <button
+                      onClick={handleClearSearch}
+                      className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 font-bold text-forest shadow-xs hover:bg-forest hover:text-white transition"
+                    >
+                      <X className="h-3 w-3" /> Clear Search
+                    </button>
+                  </div>
+                )}
+
+                {/* Search Error Message */}
+                {searchError && (
+                  <div className="mb-6 rounded-2xl bg-red-50 border border-red-200 p-4 text-xs text-red-700 flex items-center justify-between">
+                    <div>
+                      <strong className="block font-bold">Search Error</strong>
+                      <span>{searchError}</span>
+                    </div>
+                    <button
+                      onClick={handleClearSearch}
+                      className="rounded-full bg-white px-3 py-1 text-xs font-bold text-red-700 border border-red-200 hover:bg-red-100 transition"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+
+                {/* Server Error Message */}
+                {productError && (
+                  <div className="mb-6 rounded-2xl bg-amber-50 border border-amber-200 p-4 text-xs text-amber-800 flex items-center justify-between">
+                    <div>
+                      <strong className="block font-bold">Failed to load live catalog</strong>
+                      <span>{productError}</span>
+                    </div>
+                    <button
+                      onClick={() => fetchLiveProducts(selectedCategory)}
+                      className="rounded-full bg-amber-600 px-3 py-1 text-xs font-bold text-white shadow-xs hover:bg-amber-700 transition"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-3 border-b border-line">
                   <p className="text-xs sm:text-sm font-semibold text-ink/70">
-                    Showing <span className="font-bold text-ink">{filteredProducts.length}</span> authentic handmade items
+                    {isLoadingProducts || isSearching ? (
+                      <span>Loading authentic crafts...</span>
+                    ) : (
+                      <span>
+                        Showing <span className="font-bold text-ink">{filteredProducts.length}</span> authentic handmade items
+                      </span>
+                    )}
                   </p>
 
                   <div className="flex items-center gap-2 text-xs font-bold">
@@ -947,61 +1152,124 @@ export default function BuyerApp() {
                   </div>
                 </div>
 
-                <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                  {filteredProducts.map((product) => (
-                    <div
-                      key={product.id}
-                      onClick={() => setSelectedProduct(product)}
-                      className="group cursor-pointer rounded-2xl border border-line bg-white p-3 shadow-xs transition duration-300 hover:-translate-y-1 hover:shadow-xl flex flex-col justify-between"
-                    >
-                      <div>
-                        <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-paper">
-                          <img
-                            src={product.image}
-                            alt={product.name}
-                            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                          />
-                          <button
-                            onClick={(e) => toggleWishlist(product.id, e)}
-                            className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/90 text-ink shadow-xs transition hover:bg-terracotta hover:text-white"
-                          >
-                            <Heart
-                              className={`h-4 w-4 ${wishlist.includes(product.id) ? "fill-terracotta text-terracotta hover:fill-white" : ""}`}
-                            />
-                          </button>
-                          <span className="absolute bottom-3 left-3 rounded-full bg-white/90 backdrop-blur-xs px-2.5 py-1 text-[10px] font-bold text-forest">
-                            {product.availability}
-                          </span>
+                {/* Loading State Skeleton */}
+                {(isLoadingProducts || isSearching) && (
+                  <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                    {[1, 2, 3, 4, 5, 6].map((i) => (
+                      <div key={i} className="rounded-2xl border border-line bg-white p-3 shadow-xs animate-pulse">
+                        <div className="aspect-square w-full rounded-xl bg-paper/80" />
+                        <div className="pt-3 space-y-2">
+                          <div className="h-3 w-1/3 bg-paper rounded" />
+                          <div className="h-4 w-3/4 bg-paper rounded" />
+                          <div className="h-3 w-1/2 bg-paper rounded" />
                         </div>
+                        <div className="mt-4 pt-3 border-t border-line/60 flex justify-between items-center">
+                          <div className="h-5 w-16 bg-paper rounded" />
+                          <div className="h-7 w-20 bg-paper rounded-full" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
-                        <div className="pt-3">
-                          <div className="flex items-center justify-between text-xs text-ink/60">
-                            <span className="font-semibold text-terracotta">{product.category}</span>
-                            <span className="flex items-center gap-1 font-bold text-ink">
-                              <Star className="h-3.5 w-3.5 fill-gold text-gold" />
-                              {product.rating} ({product.reviewsCount})
+                {/* Empty State */}
+                {!isLoadingProducts && !isSearching && filteredProducts.length === 0 && (
+                  <div className="text-center py-16 px-4 bg-white rounded-3xl border border-line">
+                    <div className="grid h-16 w-16 place-items-center rounded-full bg-paper mx-auto text-ink/40 mb-4">
+                      <Package className="h-8 w-8" />
+                    </div>
+                    <h3 className="font-serif-title text-xl font-bold text-ink">
+                      {activeSearchQuery
+                        ? `No craft products found matching "${activeSearchQuery}"`
+                        : "No products available in this category"}
+                    </h3>
+                    <p className="mt-2 text-xs sm:text-sm text-ink/65 max-w-md mx-auto">
+                      {activeSearchQuery
+                        ? "Try adjusting your search terms, exploring different categories, or removing price filters."
+                        : "Check back soon as our rural artisan clusters frequently add authentic new handicrafts."}
+                    </p>
+                    <div className="mt-6 flex justify-center gap-3">
+                      {activeSearchQuery && (
+                        <button
+                          onClick={handleClearSearch}
+                          className="rounded-full bg-forest px-5 py-2 text-xs font-bold text-white shadow-md hover:bg-forest-dark transition"
+                        >
+                          Clear Search
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setSelectedCategory("All");
+                          setMaxPrice(5000);
+                          setMinRating(0);
+                          handleClearSearch();
+                        }}
+                        className="rounded-full border border-line px-5 py-2 text-xs font-bold text-ink hover:bg-paper transition"
+                      >
+                        Reset All Filters
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Products Grid */}
+                {!isLoadingProducts && !isSearching && filteredProducts.length > 0 && (
+                  <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                    {filteredProducts.map((product) => (
+                      <div
+                        key={product.id}
+                        onClick={() => handleSelectProduct(product)}
+                        className="group cursor-pointer rounded-2xl border border-line bg-white p-3 shadow-xs transition duration-300 hover:-translate-y-1 hover:shadow-xl flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-paper">
+                            <img
+                              src={product.image}
+                              alt={product.name}
+                              className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                            />
+                            <button
+                              onClick={(e) => toggleWishlist(product.id, e)}
+                              className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/90 text-ink shadow-xs transition hover:bg-terracotta hover:text-white"
+                            >
+                              <Heart
+                                className={`h-4 w-4 ${wishlist.includes(product.id) ? "fill-terracotta text-terracotta hover:fill-white" : ""}`}
+                              />
+                            </button>
+                            <span className="absolute bottom-3 left-3 rounded-full bg-white/90 backdrop-blur-xs px-2.5 py-1 text-[10px] font-bold text-forest">
+                              {product.availability}
                             </span>
                           </div>
 
-                          <h3 className="mt-1 font-bold text-lg text-ink group-hover:text-terracotta transition">
-                            {product.name}
-                          </h3>
-                          <p className="text-xs text-ink/60">by {product.artisan}</p>
+                          <div className="pt-3">
+                            <div className="flex items-center justify-between text-xs text-ink/60">
+                              <span className="font-semibold text-terracotta">{product.category}</span>
+                              <span className="flex items-center gap-1 font-bold text-ink">
+                                <Star className="h-3.5 w-3.5 fill-gold text-gold" />
+                                {product.rating} ({product.reviewsCount})
+                              </span>
+                            </div>
+
+                            <h3 className="mt-1 font-bold text-lg text-ink group-hover:text-terracotta transition">
+                              {product.name}
+                            </h3>
+                            <p className="text-xs text-ink/60">by {product.artisan}</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-between pt-3 border-t border-line/60">
+                          <span className="text-lg font-bold text-forest">{product.formattedPrice}</span>
+                          <button
+                            onClick={(e) => addToCart(product, 1, e)}
+                            className="rounded-full bg-forest px-3.5 py-1.5 text-xs font-bold text-white transition hover:bg-forest-dark"
+                          >
+                            Add to Cart
+                          </button>
                         </div>
                       </div>
-
-                      <div className="mt-4 flex items-center justify-between pt-3 border-t border-line/60">
-                        <span className="text-lg font-bold text-forest">{product.formattedPrice}</span>
-                        <button
-                          onClick={(e) => addToCart(product, 1, e)}
-                          className="rounded-full bg-forest px-3.5 py-1.5 text-xs font-bold text-white transition hover:bg-forest-dark"
-                        >
-                          Add to Cart
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
