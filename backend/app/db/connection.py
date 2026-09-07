@@ -61,10 +61,51 @@ class DatabasePoolManager:
         except Exception as exc:
             raise DatabaseConnectionError(f"Database connection error: {exc}") from exc
 
+    async def check_health(self) -> bool:
+        """Perform a lightweight health check query (SELECT 1)."""
+        async with self.connection() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("SELECT 1;")
+                row = await cursor.fetchone()
+                return row is not None and row[0] == 1
+
     async def close(self) -> None:
         if self._pool is not None and not self._pool.closed:
             await self._pool.close()
             self._pool = None
+
+
+# Default global pool manager instance for application lifecycle
+_default_pool_manager: DatabasePoolManager = DatabasePoolManager()
+
+
+def get_pool_manager() -> DatabasePoolManager:
+    """Get the current application pool manager."""
+    return _default_pool_manager
+
+
+def set_pool_manager(manager: DatabasePoolManager) -> None:
+    """Set or override the application pool manager (useful for testing)."""
+    global _default_pool_manager
+    _default_pool_manager = manager
+
+
+async def init_db_pool() -> None:
+    """
+    Initialize the database connection pool during application startup.
+    Does not raise an exception if DATABASE_URL is not configured or if initial
+    connection fails, keeping the FastAPI application importable and alive.
+    """
+    try:
+        await _default_pool_manager.get_pool()
+    except (DatabaseConfigurationError, DatabaseConnectionError):
+        # Graceful fallback: application remains alive even if DB is unavailable at startup
+        pass
+
+
+async def close_db_pool() -> None:
+    """Close the database connection pool during application shutdown."""
+    await _default_pool_manager.close()
 
 
 @asynccontextmanager

@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     supabase_anon_key: str | None = None
     database_url: str | None = None
 
+    # Authentication settings
+    jwt_secret_key: str = "change-this-in-production-shilpsetu-secret-key-2026"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60
+    auth_required: bool = False
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

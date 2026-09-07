@@ -122,6 +122,8 @@ ShilpSetu Database Verification
 [PASS] Migrations are strictly ordered, unique, and free of duplicate/conflicting files.
   - Verified migration: 001_initial_schema.sql
   - Verified migration: 002_storage_setup.sql
+  - Verified migration: 003_orders_enhancement_and_notifications.sql
+  - Verified migration: 004_auth_enhancement.sql
 
 --- 2. Schema Migration Validation (001_initial_schema.sql) ---
 [PASS] Schema matches DATABASE_SCHEMA.md constraints, extensions, and tables.
