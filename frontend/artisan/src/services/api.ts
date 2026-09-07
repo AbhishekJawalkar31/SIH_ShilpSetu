@@ -17,8 +17,8 @@ let lastHealthCheckTime = 0;
  */
 export async function checkBackendHealth(): Promise<boolean> {
   const now = Date.now();
-  // Cache health check for 10 seconds to prevent spamming
-  if (isBackendAvailableCache !== null && now - lastHealthCheckTime < 10000) {
+  // Cache health check for 5 seconds to prevent spamming
+  if (isBackendAvailableCache !== null && now - lastHealthCheckTime < 5000) {
     return isBackendAvailableCache;
   }
 
@@ -40,6 +40,63 @@ export async function checkBackendHealth(): Promise<boolean> {
     lastHealthCheckTime = now;
     return false;
   }
+}
+
+/**
+ * GET /api/artisans/{artisan_id}
+ * Fetch public artisan profile.
+ */
+export async function getArtisanProfile(artisanId: string): Promise<ArtisanProfile> {
+  const isOnline = await checkBackendHealth();
+
+  if (isOnline) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/artisans/${artisanId}`);
+      if (response.ok) {
+        const data = (await response.json()) as ArtisanProfile;
+        return {
+          ...data,
+          location: data.location || (data.city && data.state ? `${data.city}, ${data.state}` : mockArtisanProfile.location),
+        };
+      }
+    } catch (err) {
+      console.warn("Live fetch profile failed, using mock profile:", err);
+    }
+  }
+
+  return mockArtisanProfile;
+}
+
+/**
+ * GET /api/artisans/{artisan_id}/products
+ * Fetch products for a specific artisan with robust response shape handling (array or items/products key).
+ */
+export async function getArtisanProducts(artisanId: string): Promise<Product[]> {
+  const isOnline = await checkBackendHealth();
+
+  if (isOnline) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/artisans/${artisanId}/products`);
+      if (response.ok) {
+        const data = await response.json();
+        // Backend returns list[ProductResponse] directly on /api/artisans/{id}/products
+        // Or if wrapped as { items: [...] } or { products: [...] }
+        if (Array.isArray(data)) {
+          return data as Product[];
+        }
+        if (data.products && Array.isArray(data.products)) {
+          return data.products as Product[];
+        }
+        if (data.items && Array.isArray(data.items)) {
+          return data.items as Product[];
+        }
+      }
+    } catch (err) {
+      console.warn("Live fetch products failed, using mock fallback:", err);
+    }
+  }
+
+  return initialProducts;
 }
 
 /**
@@ -79,9 +136,8 @@ export async function generateCatalogue(
   }
 
   // Isolated Mock Service Layer (Contract-compliant fallback when backend is offline)
-  await new Promise((resolve) => setTimeout(resolve, 2000)); // Realistic AI generation simulation
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 
-  // Adapt generated attributes based on voice or detected hint
   const textHint = (voiceText || "").toLowerCase();
   
   if (textHint.includes("pot") || textHint.includes("clay") || textHint.includes("mitti") || textHint.includes("lamp") || textHint.includes("diya")) {
@@ -120,7 +176,6 @@ export async function generateCatalogue(
     };
   }
 
-  // Default craft: Handcrafted Jute Tote Bag (Matching the prototype screenshot)
   return {
     title: "Handcrafted Jute Tote Bag",
     description: "Eco-friendly handwoven natural jute tote bag with reinforced cotton handles, traditional floral embroidery, and spacious capacity for daily shopping, events, or corporate bulk gifting.",
@@ -168,7 +223,6 @@ export async function transcribeSpeech(
     }
   }
 
-  // Mock voice transcription fallback
   await new Promise((resolve) => setTimeout(resolve, 1400));
 
   if (language === "hi") {
@@ -186,81 +240,97 @@ export async function transcribeSpeech(
 
 /**
  * POST /api/products
- * Creates a product listing with the artisan-approved details and price.
+ * Creates a product listing with the artisan-approved details, price, and inventory.
  */
 export async function createProduct(payload: ProductCreatePayload): Promise<Product> {
   const isOnline = await checkBackendHealth();
+
+  // Validate and clean image URL: fallback to high-quality unsplash craft photo if blob URL cannot be stored remotely
+  let imageUrl = payload.image_url;
+  if (!imageUrl || imageUrl.startsWith("blob:")) {
+    imageUrl = "https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600";
+  }
+
+  const backendPayload = {
+    artisan_id: payload.artisan_id,
+    title: payload.title,
+    description: payload.description,
+    category: payload.category || "Home Decor",
+    material: payload.material || "Natural Material",
+    craft_type: payload.craft_type || "Handcrafted",
+    tags: payload.tags || [],
+    attributes: payload.attributes || {},
+    price: payload.price,
+    currency: payload.currency || "INR",
+    image_url: imageUrl,
+    status: payload.status || "published",
+    available_quantity: payload.available_quantity ?? 25,
+    production_capacity: payload.production_capacity ?? 100,
+    unit: payload.unit || "piece",
+  };
 
   if (isOnline) {
     try {
       const response = await fetch(`${API_BASE_URL}/api/products`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(backendPayload),
       });
 
       if (response.ok) {
         return (await response.json()) as Product;
+      } else {
+        const errJson = await response.json().catch(() => ({}));
+        console.warn("Backend createProduct rejected with:", errJson);
       }
     } catch (err) {
-      console.warn("Live createProduct failed, falling back to local storage/mock:", err);
+      console.warn("Live createProduct failed, falling back to local fallback:", err);
     }
   }
 
   // Isolated fallback creation
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  await new Promise((resolve) => setTimeout(resolve, 800));
   const newProduct: Product = {
-    ...payload,
+    ...backendPayload,
     id: `prod-${Date.now()}`,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-    available_quantity: 25,
-    production_capacity: 100,
   };
 
   return newProduct;
 }
 
 /**
- * GET /api/artisans/{artisan_id}/products
+ * PUT /api/products/{product_id}/inventory
+ * Updates inventory availability and capacity for a product.
  */
-export async function getArtisanProducts(artisanId: string): Promise<Product[]> {
+export async function updateProductInventory(
+  productId: string,
+  availableQuantity: number,
+  productionCapacity: number,
+  unit: string = "piece"
+): Promise<Product | null> {
   const isOnline = await checkBackendHealth();
 
   if (isOnline) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/artisans/${artisanId}/products`);
+      const response = await fetch(`${API_BASE_URL}/api/products/${productId}/inventory`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          available_quantity: availableQuantity,
+          production_capacity: productionCapacity,
+          unit: unit,
+        }),
+      });
+
       if (response.ok) {
-        const data = await response.json();
-        if (data.products && Array.isArray(data.products)) {
-          return data.products;
-        }
+        return (await response.json()) as Product;
       }
     } catch (err) {
-      console.warn("Live fetch products failed, using mock fallback:", err);
+      console.warn("Live updateProductInventory failed:", err);
     }
   }
 
-  return initialProducts;
+  return null;
 }
-
-/**
- * GET /api/artisans/{artisan_id}
- */
-export async function getArtisanProfile(artisanId: string): Promise<ArtisanProfile> {
-  const isOnline = await checkBackendHealth();
-
-  if (isOnline) {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/artisans/${artisanId}`);
-      if (response.ok) {
-        return (await response.json()) as ArtisanProfile;
-      }
-    } catch (err) {
-      console.warn("Live fetch profile failed, using mock profile:", err);
-    }
-  }
-
-  return mockArtisanProfile;
-}
-

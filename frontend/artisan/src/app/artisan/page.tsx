@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ChevronLeft, Globe } from "lucide-react";
 import { MobileFrame } from "../../components/common/MobileFrame";
 import { Header } from "../../components/common/Header";
@@ -29,8 +29,14 @@ import {
   Product,
   CatalogueGenerationResponse,
   ActivityItem,
+  ArtisanProfile,
 } from "../../services/types";
-import { generateCatalogue, createProduct } from "../../services/api";
+import {
+  generateCatalogue,
+  createProduct,
+  getArtisanProfile,
+  getArtisanProducts,
+} from "../../services/api";
 
 export default function ArtisanApp() {
   // Localization state (Hindi / English)
@@ -45,10 +51,12 @@ export default function ArtisanApp() {
     "photo" | "loading" | "details" | "price" | "success"
   >("photo");
 
-  // Products and Activities list
+  // Profile and data state
+  const [profile, setProfile] = useState<ArtisanProfile>(mockArtisanProfile);
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [activities, setActivities] = useState<ActivityItem[]>(mockActivities);
   const [earnings, setEarnings] = useState<string>("₹12,340");
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(false);
 
   // Add Product Form Data
   const [uploadedImageFile, setUploadedImageFile] = useState<File | Blob | null>(null);
@@ -76,6 +84,34 @@ export default function ArtisanApp() {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
 
+  // Fetch live artisan profile and products on mount
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadArtisanData() {
+      setIsLoadingData(true);
+      try {
+        const [liveProfile, liveProducts] = await Promise.all([
+          getArtisanProfile(mockArtisanProfile.id),
+          getArtisanProducts(mockArtisanProfile.id),
+        ]);
+        if (isMounted) {
+          if (liveProfile) setProfile(liveProfile);
+          if (liveProducts && liveProducts.length > 0) setProducts(liveProducts);
+        }
+      } catch (err) {
+        console.warn("Could not load live artisan data, using initial data:", err);
+      } finally {
+        if (isMounted) setIsLoadingData(false);
+      }
+    }
+
+    loadArtisanData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Toggle Language
   const toggleLanguage = () => {
     setLang((prev) => (prev === "en" ? "hi" : "en"));
@@ -97,7 +133,7 @@ export default function ArtisanApp() {
       const generated = await generateCatalogue(
         imageFile,
         voiceText,
-        mockArtisanProfile.id
+        profile.id
       );
       setCatalogueData(generated);
       setArtisanPrice(
@@ -112,12 +148,12 @@ export default function ArtisanApp() {
     }
   };
 
-  // Publish final product
+  // Publish final product with live backend integration
   const handlePublishProduct = async () => {
     setIsPublishing(true);
     try {
       const newProduct = await createProduct({
-        artisan_id: mockArtisanProfile.id,
+        artisan_id: profile.id,
         title: catalogueData.title,
         description: catalogueData.description,
         category: catalogueData.category,
@@ -129,9 +165,13 @@ export default function ArtisanApp() {
         currency: "INR",
         image_url: uploadedImagePreview,
         status: "published",
+        available_quantity: 30,
+        production_capacity: 100,
+        unit: "piece",
       });
 
-      setProducts((prev) => [newProduct, ...prev]);
+      // Update state with newly created product
+      setProducts((prev) => [newProduct, ...prev.filter((p) => p.id !== newProduct.id)]);
       setPublishedProduct(newProduct);
       setActivities((prev) => [
         {
@@ -165,7 +205,7 @@ export default function ArtisanApp() {
       <Header
         lang={lang}
         onToggleLang={toggleLanguage}
-        profile={mockArtisanProfile}
+        profile={profile}
         activeScreen={activeScreen}
         onNavigate={(screen) => {
           setActiveScreen(screen);
@@ -332,7 +372,7 @@ export default function ArtisanApp() {
       {/* SCREEN 5: ARTISAN PROFILE */}
       {activeScreen === "profile" && (
         <ProfileView
-          profile={mockArtisanProfile}
+          profile={profile}
           lang={lang}
           onToggleLang={toggleLanguage}
         />
@@ -351,4 +391,3 @@ export default function ArtisanApp() {
     </MobileFrame>
   );
 }
-

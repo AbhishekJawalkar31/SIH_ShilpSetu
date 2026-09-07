@@ -1,5 +1,7 @@
 export interface ArtisanProfile {
   id: string;
+  user_id?: string;
+  name?: string;
   business_name: string;
   craft_type: string;
   description: string;
@@ -43,17 +45,28 @@ export interface ProductCreatePayload {
   tags: string[];
   attributes: ProductAttributes;
   price: number;
-  currency: string;
+  currency?: string;
   image_url: string;
   status: "draft" | "published" | "archived";
+  available_quantity?: number;
+  production_capacity?: number;
+  unit?: string;
 }
 
 export interface Product extends ProductCreatePayload {
   id: string;
   created_at?: string;
   updated_at?: string;
-  available_quantity?: number;
-  production_capacity?: number;
+  available_quantity: number;
+  production_capacity: number;
+  unit?: string;
+}
+
+export interface ProductListResponse {
+  products: Product[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface SpeechTranscriptionResponse {
@@ -92,4 +105,3 @@ export interface ActivityItem {
   time_ago: string;
   status?: string;
 }
-
