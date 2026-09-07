@@ -8,6 +8,8 @@ class Settings(BaseSettings):
 
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
+    gemini_embedding_model: str = "text-embedding-004"
+    embedding_dimension: int = 768
     sarvam_api_key: str | None = None
     supabase_url: str | None = None
     supabase_anon_key: str | None = None

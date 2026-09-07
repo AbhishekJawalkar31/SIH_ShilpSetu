@@ -7,3 +7,5 @@ sarvamai
 Pillow
 pytest
 httpx
+psycopg[binary,pool]
+pgvector
