@@ -300,6 +300,9 @@ export default function BuyerApp() {
   // Select Product and load full backend details if needed
   const handleSelectProduct = useCallback(async (prod: Product) => {
     setSelectedProduct(prod);
+    setActiveGalleryIndex(0);
+    setDetailQuantity(1);
+    setActiveDetailTab("story");
     // Fetch live backend detail if it's a valid backend UUID
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(prod.id);
     if (isUuid) {
@@ -404,6 +407,13 @@ export default function BuyerApp() {
       if (sortBy === "rating") return b.rating - a.rating;
       return 0; // default newest/received order
     });
+
+  // Wishlist products pool combining live and mock products
+  const allAvailableProducts = [
+    ...liveProducts,
+    ...mockProducts.filter((mp) => !liveProducts.some((lp) => lp.id === mp.id)),
+  ];
+  const wishlistedProducts = allAvailableProducts.filter((p) => wishlist.includes(p.id));
 
   return (
     <div className="min-h-screen bg-ivory text-ink flex flex-col selection:bg-terracotta selection:text-white">
@@ -533,9 +543,8 @@ export default function BuyerApp() {
                   setActiveView("dashboard");
                   setDashboardTab("dashboard");
                 }}
-                className={`p-2 rounded-full text-ink/80 hover:text-forest transition ${
-                  activeView === "dashboard" ? "text-forest font-bold" : ""
-                }`}
+                className={`p-2 rounded-full text-ink/80 hover:text-forest transition ${activeView === "dashboard" ? "text-forest font-bold" : ""
+                  }`}
                 aria-label="User Account"
               >
                 <User className="h-5 w-5" />
@@ -549,7 +558,7 @@ export default function BuyerApp() {
               </button>
             )}
 
-            {/* Cart Trigger with '3' badge matching exact mockup image */}
+            {/* Cart Trigger with dynamic count badge */}
             <button
               onClick={() => {
                 setActiveView("cart");
@@ -560,9 +569,11 @@ export default function BuyerApp() {
               aria-label="Cart"
             >
               <ShoppingBag className="h-5 w-5" />
-              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#C86443] text-[10px] font-bold text-white shadow-xs">
-                3
-              </span>
+              {totalCartItemCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#C86443] text-[10px] font-bold text-white shadow-xs">
+                  {totalCartItemCount}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -826,7 +837,23 @@ export default function BuyerApp() {
                 </div>
 
                 <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                  {(liveProducts.length > 0 ? liveProducts : mockProducts).slice(0, 4).map((product, index) => (
+                  {isLoadingProducts && liveProducts.length === 0 ? (
+                    [1, 2, 3, 4].map((i) => (
+                      <div key={i} className="rounded-2xl border border-line bg-white p-3 shadow-xs animate-pulse">
+                        <div className="aspect-square w-full rounded-xl bg-paper/80" />
+                        <div className="pt-3 space-y-2">
+                          <div className="h-3 w-1/3 bg-paper rounded" />
+                          <div className="h-4 w-3/4 bg-paper rounded" />
+                          <div className="h-3 w-1/2 bg-paper rounded" />
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-line/60 flex justify-between items-center">
+                          <div className="h-5 w-16 bg-paper rounded" />
+                          <div className="h-7 w-20 bg-paper rounded-full" />
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    (liveProducts.length > 0 ? liveProducts : mockProducts).slice(0, 4).map((product, index) => (
                     <div
                       key={product.id}
                       onClick={() => handleSelectProduct(product)}
@@ -876,7 +903,7 @@ export default function BuyerApp() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                  )))}
                 </div>
               </div>
             </section>
@@ -1296,9 +1323,8 @@ export default function BuyerApp() {
                     <button
                       key={idx}
                       onClick={() => setActiveGalleryIndex(idx)}
-                      className={`h-16 w-16 sm:h-20 sm:w-20 rounded-2xl overflow-hidden border-2 transition ${
-                        activeGalleryIndex === idx ? "border-terracotta ring-2 ring-terracotta/20 scale-105" : "border-line opacity-75"
-                      }`}
+                      className={`h-16 w-16 sm:h-20 sm:w-20 rounded-2xl overflow-hidden border-2 transition ${activeGalleryIndex === idx ? "border-terracotta ring-2 ring-terracotta/20 scale-105" : "border-line opacity-75"
+                        }`}
                     >
                       <img src={img} alt="Thumbnail" className="h-full w-full object-cover" />
                     </button>
@@ -1411,7 +1437,7 @@ export default function BuyerApp() {
                   <div className="rounded-2xl border border-line bg-paper/60 p-4 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3.5">
                       <img
-                        src={artisans[0].image}
+                        src={artisans.find((a) => a.name === selectedProduct.artisan)?.image || artisans[0].image}
                         alt={selectedProduct.artisan}
                         className="h-14 w-14 rounded-full object-cover ring-2 ring-terracotta shadow-xs"
                       />
@@ -1425,8 +1451,20 @@ export default function BuyerApp() {
                     </div>
                     <button
                       onClick={() => {
-                        const found = artisans.find((a) => a.name === selectedProduct.artisan) || artisans[0];
+                        const found = artisans.find((a) => a.name === selectedProduct.artisan) || {
+                          id: "artisan-custom",
+                          name: selectedProduct.artisan,
+                          craft: selectedProduct.category,
+                          location: selectedProduct.artisanLocation,
+                          description: selectedProduct.artisanBio?.bio || `Dedicated master craftsperson specializing in authentic ${selectedProduct.category.toLowerCase()}.`,
+                          image: selectedProduct.image,
+                          bannerImage: "https://images.unsplash.com/photo-1606744837616-56c9a5c6a6eb?auto=format&fit=crop&w=1200&q=85",
+                          followersCount: 120,
+                          impactBadges: ["Direct Fair Trade", "Heritage Craft"],
+                          productsCount: 6,
+                        };
                         setSelectedArtisan(found);
+                        setSelectedProduct(null);
                       }}
                       className="shrink-0 rounded-full border border-forest px-4 py-2 text-xs font-bold text-forest bg-white hover:bg-forest hover:text-white transition shadow-xs"
                     >
@@ -1443,31 +1481,28 @@ export default function BuyerApp() {
               <div className="flex border-b border-line gap-6 sm:gap-10 text-xs sm:text-sm font-bold">
                 <button
                   onClick={() => setActiveDetailTab("story")}
-                  className={`pb-4 transition relative ${
-                    activeDetailTab === "story"
-                      ? "text-forest border-b-2 border-forest"
-                      : "text-ink/60 hover:text-ink"
-                  }`}
+                  className={`pb-4 transition relative ${activeDetailTab === "story"
+                    ? "text-forest border-b-2 border-forest"
+                    : "text-ink/60 hover:text-ink"
+                    }`}
                 >
                   📜 Product Story & Process
                 </button>
                 <button
                   onClick={() => setActiveDetailTab("artisan")}
-                  className={`pb-4 transition relative ${
-                    activeDetailTab === "artisan"
-                      ? "text-forest border-b-2 border-forest"
-                      : "text-ink/60 hover:text-ink"
-                  }`}
+                  className={`pb-4 transition relative ${activeDetailTab === "artisan"
+                    ? "text-forest border-b-2 border-forest"
+                    : "text-ink/60 hover:text-ink"
+                    }`}
                 >
                   🎨 About Artisan & Background
                 </button>
                 <button
                   onClick={() => setActiveDetailTab("reviews")}
-                  className={`pb-4 transition relative ${
-                    activeDetailTab === "reviews"
-                      ? "text-forest border-b-2 border-forest"
-                      : "text-ink/60 hover:text-ink"
-                  }`}
+                  className={`pb-4 transition relative ${activeDetailTab === "reviews"
+                    ? "text-forest border-b-2 border-forest"
+                    : "text-ink/60 hover:text-ink"
+                    }`}
                 >
                   ⭐ Customer Reviews ({(productReviewsMap[selectedProduct.id] || selectedProduct.reviewsList || []).length + selectedProduct.reviewsCount})
                 </button>
@@ -1523,7 +1558,7 @@ export default function BuyerApp() {
                         <MapPin className="h-3.5 w-3.5 text-terracotta" /> {selectedProduct.artisanLocation}
                       </p>
                       <p className="text-xs text-ink/80 leading-relaxed pt-1">
-                        {selectedProduct.artisanBio?.bio || artisans[0].description}
+                        {selectedProduct.artisanBio?.bio || artisans.find((a) => a.name === selectedProduct.artisan)?.description || `Dedicated artisan from ${selectedProduct.artisanLocation} preserving traditional Indian craftsmanship in ${selectedProduct.category.toLowerCase()}. Every piece reflects generations of cultural heritage, sustainable materials, and handmade excellence.`}
                       </p>
                     </div>
                   </div>
@@ -1769,9 +1804,9 @@ export default function BuyerApp() {
               <div className="space-y-4">
                 <h3 className="font-serif-title text-2xl font-bold text-ink">More Products</h3>
                 <div className="space-y-4">
-                  {products
-                    .filter((p) => p.artisan === (selectedArtisan || artisans[0]).name)
-                    .map((product) => (
+                  {(liveProducts.length > 0 ? liveProducts : mockProducts)
+                    .filter((p: Product) => p.artisan === (selectedArtisan || artisans[0]).name)
+                    .map((product: Product) => (
                       <div
                         key={product.id}
                         onClick={() => setSelectedProduct(product)}
@@ -1803,36 +1838,32 @@ export default function BuyerApp() {
               <aside className="rounded-3xl border border-line bg-white p-4 space-y-1 h-fit">
                 <button
                   onClick={() => setDashboardTab("dashboard")}
-                  className={`w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-xs sm:text-sm font-bold transition ${
-                    dashboardTab === "dashboard" ? "bg-forest text-white shadow-md" : "text-ink/80 hover:bg-paper"
-                  }`}
+                  className={`w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-xs sm:text-sm font-bold transition ${dashboardTab === "dashboard" ? "bg-forest text-white shadow-md" : "text-ink/80 hover:bg-paper"
+                    }`}
                 >
                   <User className="h-4 w-4" /> Dashboard
                 </button>
 
                 <button
                   onClick={() => setDashboardTab("orders")}
-                  className={`w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-xs sm:text-sm font-bold transition ${
-                    dashboardTab === "orders" ? "bg-forest text-white shadow-md" : "text-ink/80 hover:bg-paper"
-                  }`}
+                  className={`w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-xs sm:text-sm font-bold transition ${dashboardTab === "orders" ? "bg-forest text-white shadow-md" : "text-ink/80 hover:bg-paper"
+                    }`}
                 >
                   <Package className="h-4 w-4" /> My Orders
                 </button>
 
                 <button
                   onClick={() => setDashboardTab("wishlist")}
-                  className={`w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-xs sm:text-sm font-bold transition ${
-                    dashboardTab === "wishlist" ? "bg-forest text-white shadow-md" : "text-ink/80 hover:bg-paper"
-                  }`}
+                  className={`w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-xs sm:text-sm font-bold transition ${dashboardTab === "wishlist" ? "bg-forest text-white shadow-md" : "text-ink/80 hover:bg-paper"
+                    }`}
                 >
                   <Heart className="h-4 w-4" /> Wishlist ({wishlist.length})
                 </button>
 
                 <button
                   onClick={() => setDashboardTab("profile")}
-                  className={`w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-xs sm:text-sm font-bold transition ${
-                    dashboardTab === "profile" ? "bg-forest text-white shadow-md" : "text-ink/80 hover:bg-paper"
-                  }`}
+                  className={`w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-xs sm:text-sm font-bold transition ${dashboardTab === "profile" ? "bg-forest text-white shadow-md" : "text-ink/80 hover:bg-paper"
+                    }`}
                 >
                   <User className="h-4 w-4" /> Profile
                 </button>
@@ -1847,79 +1878,155 @@ export default function BuyerApp() {
 
               {/* Main Dashboard Panel */}
               <div className="space-y-8">
-                {/* Greeting Header matching mockup */}
-                <div>
-                  <h1 className="font-serif-title text-3xl font-bold text-ink">
-                    Welcome back, {userProfile.name}!
-                  </h1>
-                  <p className="text-xs sm:text-sm text-ink/65 mt-1">
-                    Here&apos;s your journey with ShilpSetu.
-                  </p>
-                </div>
+                {/* 1. DASHBOARD OVERVIEW TAB */}
+                {dashboardTab === "dashboard" && (
+                  <div className="space-y-8 animate-fade-in">
+                    {/* Greeting Header matching mockup */}
+                    <div>
+                      <h1 className="font-serif-title text-3xl font-bold text-ink">
+                        Welcome back, {userProfile.name}!
+                      </h1>
+                      <p className="text-xs sm:text-sm text-ink/65 mt-1">
+                        Here&apos;s your journey with ShilpSetu.
+                      </p>
+                    </div>
 
-                {/* 4 STAT CARDS matching mockup */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <div className="rounded-2xl border border-line bg-paper/60 p-4 text-center">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-ink/60">Total Orders</p>
-                    <p className="font-serif-title text-3xl font-bold text-ink mt-1">{orderList.length}</p>
+                    {/* 4 STAT CARDS matching mockup */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      <div className="rounded-2xl border border-line bg-paper/60 p-4 text-center">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-ink/60">Total Orders</p>
+                        <p className="font-serif-title text-3xl font-bold text-ink mt-1">{orderList.length}</p>
+                      </div>
+
+                      <div className="rounded-2xl border border-line bg-paper/60 p-4 text-center">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-ink/60">Wishlist Items</p>
+                        <p className="font-serif-title text-3xl font-bold text-ink mt-1">{wishlist.length}</p>
+                      </div>
+
+                      <div className="rounded-2xl border border-line bg-paper/60 p-4 text-center">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-ink/60">Total Spent</p>
+                        <p className="font-serif-title text-3xl font-bold text-forest mt-1">₹ 4,250</p>
+                      </div>
+
+                      <div className="rounded-2xl border border-line bg-paper/60 p-4 text-center">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-ink/60">Artisans Supported</p>
+                        <p className="font-serif-title text-2xl font-bold text-terracotta mt-1">2 Artisans</p>
+                      </div>
+                    </div>
+
+                    {/* RECENT ORDERS TABLE matching mockup */}
+                    <div className="rounded-3xl border border-line bg-white p-6 shadow-xs">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-bold text-lg text-ink">Recent Orders</h3>
+                        <button
+                          onClick={() => setDashboardTab("orders")}
+                          className="text-xs font-bold text-terracotta hover:underline"
+                        >
+                          View All →
+                        </button>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs sm:text-sm">
+                          <thead>
+                            <tr className="border-b border-line text-ink/60">
+                              <th className="pb-3 font-semibold">Product</th>
+                              <th className="pb-3 font-semibold">Date</th>
+                              <th className="pb-3 font-semibold">Status</th>
+                              <th className="pb-3 font-semibold text-right">Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-line/60">
+                            {orderList.slice(0, 3).map((order) => (
+                              <tr key={order.id} className="hover:bg-paper/30 transition">
+                                <td className="py-3 flex items-center gap-3">
+                                  <img
+                                    src={order.productImage}
+                                    alt={order.productName}
+                                    className="h-10 w-10 rounded-lg object-cover"
+                                  />
+                                  <div>
+                                    <span className="font-bold text-ink block">{order.productName}</span>
+                                    <span className="text-[11px] text-ink/60">by {order.artisan}</span>
+                                  </div>
+                                </td>
+                                <td className="py-3 text-ink/70">{order.date}</td>
+                                <td className="py-3">
+                                  <span
+                                    className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                                      order.status === "Delivered"
+                                        ? "bg-emerald-100 text-emerald-800"
+                                        : "bg-blue-100 text-blue-800"
+                                    }`}
+                                  >
+                                    {order.status}
+                                  </span>
+                                </td>
+                                <td className="py-3 text-right font-bold text-ink">{order.formattedAmount}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
+                )}
 
-                  <div className="rounded-2xl border border-line bg-paper/60 p-4 text-center">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-ink/60">Wishlist Items</p>
-                    <p className="font-serif-title text-3xl font-bold text-ink mt-1">{wishlist.length}</p>
-                  </div>
+                {/* 2. MY ORDERS TAB */}
+                {dashboardTab === "orders" && (
+                  <div className="space-y-6 animate-fade-in">
+                    <div>
+                      <h2 className="font-serif-title text-3xl font-bold text-ink">My Orders</h2>
+                      <p className="text-xs sm:text-sm text-ink/65 mt-1">
+                        Track and manage your order history ({orderList.length} orders)
+                      </p>
+                    </div>
 
-                  <div className="rounded-2xl border border-line bg-paper/60 p-4 text-center">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-ink/60">Total Spent</p>
-                    <p className="font-serif-title text-3xl font-bold text-forest mt-1">₹ 4,250</p>
-                  </div>
-
-                  <div className="rounded-2xl border border-line bg-paper/60 p-4 text-center">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-ink/60">Artisans Supported</p>
-                    <p className="font-serif-title text-2xl font-bold text-terracotta mt-1">2 Artisans</p>
-                  </div>
-                </div>
-
-                {/* RECENT ORDERS TABLE matching mockup */}
-                <div className="rounded-3xl border border-line bg-white p-6 shadow-xs">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-bold text-lg text-ink">Recent Orders</h3>
-                    <button
-                      onClick={() => setDashboardTab("orders")}
-                      className="text-xs font-bold text-terracotta hover:underline"
-                    >
-                      View All →
-                    </button>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs sm:text-sm">
-                      <thead>
-                        <tr className="border-b border-line text-ink/60">
-                          <th className="pb-3 font-semibold">Product</th>
-                          <th className="pb-3 font-semibold">Date</th>
-                          <th className="pb-3 font-semibold">Status</th>
-                          <th className="pb-3 font-semibold text-right">Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-line/60">
+                    {orderList.length === 0 ? (
+                      <div className="rounded-3xl border border-line bg-white p-12 text-center">
+                        <Package className="h-12 w-12 text-ink/30 mx-auto mb-3" />
+                        <h4 className="font-serif-title text-lg font-bold text-ink">No orders found</h4>
+                        <p className="text-xs text-ink/60 mt-1 mb-4">You haven&apos;t placed any orders yet.</p>
+                        <button
+                          onClick={() => {
+                            setActiveView("shop");
+                            setSelectedProduct(null);
+                            setSelectedArtisan(null);
+                          }}
+                          className="rounded-full bg-forest px-6 py-2 text-xs font-bold text-white hover:bg-forest-dark transition"
+                        >
+                          Explore Shop
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
                         {orderList.map((order) => (
-                          <tr key={order.id} className="hover:bg-paper/30 transition">
-                            <td className="py-3 flex items-center gap-3">
+                          <div
+                            key={order.id}
+                            className="rounded-2xl border border-line bg-white p-4 sm:p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+                          >
+                            <div className="flex items-center gap-4">
                               <img
                                 src={order.productImage}
                                 alt={order.productName}
-                                className="h-10 w-10 rounded-lg object-cover"
+                                className="h-16 w-16 rounded-xl object-cover border border-line shrink-0"
                               />
                               <div>
-                                <span className="font-bold text-ink block">{order.productName}</span>
-                                <span className="text-[11px] text-ink/60">by {order.artisan}</span>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-ink/50">
+                                  Order #{order.id} &bull; {order.date}
+                                </span>
+                                <h4 className="font-serif-title text-base font-bold text-ink mt-0.5">
+                                  {order.productName}
+                                </h4>
+                                <p className="text-xs text-ink/60">Crafted by {order.artisan}</p>
                               </div>
-                            </td>
-                            <td className="py-3 text-ink/70">{order.date}</td>
-                            <td className="py-3">
+                            </div>
+                            <div className="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-2">
+                              <span className="font-serif-title text-base font-bold text-ink">
+                                {order.formattedAmount}
+                              </span>
                               <span
-                                className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                                className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
                                   order.status === "Delivered"
                                     ? "bg-emerald-100 text-emerald-800"
                                     : "bg-blue-100 text-blue-800"
@@ -1927,14 +2034,165 @@ export default function BuyerApp() {
                               >
                                 {order.status}
                               </span>
-                            </td>
-                            <td className="py-3 text-right font-bold text-ink">{order.formattedAmount}</td>
-                          </tr>
+                            </div>
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
+
+                {/* 3. WISHLIST TAB */}
+                {dashboardTab === "wishlist" && (
+                  <div className="space-y-6 animate-fade-in">
+                    <div>
+                      <h2 className="font-serif-title text-3xl font-bold text-ink">My Wishlist</h2>
+                      <p className="text-xs sm:text-sm text-ink/65 mt-1">
+                        Handmade creations you&apos;ve saved ({wishlistedProducts.length} items)
+                      </p>
+                    </div>
+
+                    {wishlistedProducts.length === 0 ? (
+                      <div className="rounded-3xl border border-line bg-white p-12 text-center">
+                        <Heart className="h-12 w-12 text-ink/30 mx-auto mb-3" />
+                        <h4 className="font-serif-title text-lg font-bold text-ink">Your wishlist is empty</h4>
+                        <p className="text-xs text-ink/60 mt-1 mb-4">
+                          Explore our collection of authentic handicrafts and save your favorites!
+                        </p>
+                        <button
+                          onClick={() => {
+                            setActiveView("shop");
+                            setSelectedProduct(null);
+                            setSelectedArtisan(null);
+                          }}
+                          className="rounded-full bg-forest px-6 py-2 text-xs font-bold text-white hover:bg-forest-dark transition"
+                        >
+                          Explore Catalog
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        {wishlistedProducts.map((product) => (
+                          <div
+                            key={product.id}
+                            className="rounded-2xl border border-line bg-white p-3 shadow-xs flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-paper">
+                                <img
+                                  src={product.image}
+                                  alt={product.name}
+                                  className="h-full w-full object-cover"
+                                />
+                                <button
+                                  onClick={(e) => toggleWishlist(product.id, e)}
+                                  className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-white/90 text-terracotta hover:bg-terracotta hover:text-white transition shadow-xs"
+                                  title="Remove from wishlist"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                              <div className="pt-3">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-ink/50">
+                                  {product.category}
+                                </span>
+                                <h4
+                                  onClick={() => handleSelectProduct(product)}
+                                  className="font-bold text-sm text-ink hover:text-terracotta cursor-pointer transition line-clamp-1 mt-0.5"
+                                >
+                                  {product.name}
+                                </h4>
+                                <p className="text-xs text-ink/60">by {product.artisan}</p>
+                              </div>
+                            </div>
+                            <div className="mt-3 pt-2 border-t border-line/60 flex items-center justify-between">
+                              <span className="font-bold text-sm text-ink">{product.formattedPrice}</span>
+                              <button
+                                onClick={(e) => addToCart(product, 1, e)}
+                                className="rounded-full bg-forest px-3 py-1.5 text-xs font-bold text-white hover:bg-forest-dark transition"
+                              >
+                                Add to Cart
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 4. PROFILE TAB */}
+                {dashboardTab === "profile" && (
+                  <div className="space-y-6 animate-fade-in">
+                    <div>
+                      <h2 className="font-serif-title text-3xl font-bold text-ink">User Profile</h2>
+                      <p className="text-xs sm:text-sm text-ink/65 mt-1">
+                        Manage your account settings and delivery preferences
+                      </p>
+                    </div>
+
+                    <div className="grid gap-6 md:grid-cols-2">
+                      {/* Personal Info */}
+                      <div className="rounded-3xl border border-line bg-white p-6 shadow-xs space-y-4">
+                        <div className="flex items-center gap-4 pb-4 border-b border-line">
+                          <div className="h-14 w-14 rounded-full bg-forest text-white grid place-items-center font-serif-title text-xl font-bold">
+                            {userProfile.name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <h3 className="font-serif-title text-lg font-bold text-ink">{userProfile.name}</h3>
+                            <span className="rounded-full bg-terracotta/10 px-2.5 py-0.5 text-[10px] font-bold text-terracotta">
+                              Artisan Patron Tier
+                            </span>
+                          </div>
+                        </div>
+                        <div className="space-y-3 text-xs">
+                          <div>
+                            <label className="font-bold text-ink/60 uppercase text-[10px] tracking-wider block">Full Name</label>
+                            <p className="font-semibold text-ink mt-0.5">{userProfile.name}</p>
+                          </div>
+                          <div>
+                            <label className="font-bold text-ink/60 uppercase text-[10px] tracking-wider block">Email Address</label>
+                            <p className="font-semibold text-ink mt-0.5">{userProfile.email}</p>
+                          </div>
+                          <div>
+                            <label className="font-bold text-ink/60 uppercase text-[10px] tracking-wider block">Phone Number</label>
+                            <p className="font-semibold text-ink mt-0.5">{userProfile.phone}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Shipping Address */}
+                      <div className="rounded-3xl border border-line bg-white p-6 shadow-xs space-y-4">
+                        <div className="flex items-center justify-between pb-4 border-b border-line">
+                          <h3 className="font-serif-title text-lg font-bold text-ink flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-terracotta" /> Delivery Address
+                          </h3>
+                          <span className="text-[10px] font-bold bg-forest/10 text-forest px-2 py-0.5 rounded-full">Default</span>
+                        </div>
+                        <div className="text-xs space-y-2 text-ink/80">
+                          <p className="font-bold text-ink">{userProfile.name}</p>
+                          <p>402, Lotus Residency, 12th Main Road</p>
+                          <p>Indiranagar, Bengaluru, Karnataka</p>
+                          <p className="font-semibold">PIN: 560038</p>
+                          <p className="text-ink/60 pt-1">Phone: {userProfile.phone}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ShilpSetu Fair Trade Guarantee Card */}
+                    <div className="rounded-3xl border border-line bg-forest/5 p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                      <div className="h-10 w-10 rounded-full bg-forest text-white grid place-items-center shrink-0">
+                        <ShieldCheck className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1 text-xs">
+                        <h4 className="font-bold text-forest text-sm">Direct Artisan Benefit Guarantee</h4>
+                        <p className="text-ink/75 mt-0.5">
+                          Every purchase you make on ShilpSetu sends fair compensation directly to rural craft clusters without middlemen markups.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1980,17 +2238,15 @@ export default function BuyerApp() {
             <div className="grid grid-cols-2 rounded-2xl bg-paper p-1 mb-6 text-xs font-bold">
               <button
                 onClick={() => setLoginRole("buyer")}
-                className={`py-2 rounded-xl transition ${
-                  loginRole === "buyer" ? "bg-forest text-white shadow-xs" : "text-ink/70"
-                }`}
+                className={`py-2 rounded-xl transition ${loginRole === "buyer" ? "bg-forest text-white shadow-xs" : "text-ink/70"
+                  }`}
               >
                 Buyer
               </button>
               <button
                 onClick={() => setLoginRole("artisan")}
-                className={`py-2 rounded-xl transition ${
-                  loginRole === "artisan" ? "bg-forest text-white shadow-xs" : "text-ink/70"
-                }`}
+                className={`py-2 rounded-xl transition ${loginRole === "artisan" ? "bg-forest text-white shadow-xs" : "text-ink/70"
+                  }`}
               >
                 Artisan
               </button>
