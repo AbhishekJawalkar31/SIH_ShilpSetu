@@ -169,8 +169,7 @@ CREATE TABLE IF NOT EXISTS quote_request_artisans (
     matched_quantity INTEGER CHECK (matched_quantity >= 0),
     match_score NUMERIC(6,4) CHECK (match_score >= 0 AND match_score <= 1),
     status TEXT DEFAULT 'matched' CHECK (status IN ('matched', 'contacted', 'quoted', 'accepted', 'rejected')),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_quote_request_artisan UNIQUE (quote_request_id, artisan_id)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- -----------------------------------------------------------------------------
