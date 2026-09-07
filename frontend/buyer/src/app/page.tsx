@@ -854,56 +854,56 @@ export default function BuyerApp() {
                     ))
                   ) : (
                     (liveProducts.length > 0 ? liveProducts : mockProducts).slice(0, 4).map((product, index) => (
-                    <div
-                      key={product.id}
-                      onClick={() => handleSelectProduct(product)}
-                      className="group cursor-pointer rounded-2xl border border-line bg-white p-3 shadow-xs transition duration-300 hover:-translate-y-1 hover:shadow-lg"
-                    >
-                      <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-paper">
-                        <img
-                          src={product.image}
-                          alt={product.name}
-                          className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
-                        />
-                        <button
-                          onClick={(e) => toggleWishlist(product.id, e)}
-                          className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/90 text-ink shadow-xs transition hover:bg-terracotta hover:text-white"
-                        >
-                          <Heart
-                            className={`h-4 w-4 ${wishlist.includes(product.id) ? "fill-terracotta text-terracotta hover:fill-white hover:text-white" : ""}`}
+                      <div
+                        key={product.id}
+                        onClick={() => handleSelectProduct(product)}
+                        className="group cursor-pointer rounded-2xl border border-line bg-white p-3 shadow-xs transition duration-300 hover:-translate-y-1 hover:shadow-lg"
+                      >
+                        <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-paper">
+                          <img
+                            src={product.image}
+                            alt={product.name}
+                            className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
                           />
-                        </button>
-                        <span className="absolute bottom-3 left-3 rounded-full bg-forest px-2.5 py-1 text-[10px] font-bold text-white">
-                          {product.availability}
-                        </span>
-                      </div>
-
-                      <div className="pt-3">
-                        <div className="flex items-center justify-between text-xs text-ink/60">
-                          <span>{product.category}</span>
-                          <span className="flex items-center gap-1 font-bold text-ink">
-                            <Star className="h-3.5 w-3.5 fill-gold text-gold" />
-                            {product.rating} ({product.reviewsCount})
+                          <button
+                            onClick={(e) => toggleWishlist(product.id, e)}
+                            className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/90 text-ink shadow-xs transition hover:bg-terracotta hover:text-white"
+                          >
+                            <Heart
+                              className={`h-4 w-4 ${wishlist.includes(product.id) ? "fill-terracotta text-terracotta hover:fill-white hover:text-white" : ""}`}
+                            />
+                          </button>
+                          <span className="absolute bottom-3 left-3 rounded-full bg-forest px-2.5 py-1 text-[10px] font-bold text-white">
+                            {product.availability}
                           </span>
                         </div>
 
-                        <h3 className="mt-1 font-bold text-base text-ink group-hover:text-terracotta transition">
-                          {product.name}
-                        </h3>
-                        <p className="text-xs text-ink/65">by {product.artisan}</p>
+                        <div className="pt-3">
+                          <div className="flex items-center justify-between text-xs text-ink/60">
+                            <span>{product.category}</span>
+                            <span className="flex items-center gap-1 font-bold text-ink">
+                              <Star className="h-3.5 w-3.5 fill-gold text-gold" />
+                              {product.rating} ({product.reviewsCount})
+                            </span>
+                          </div>
 
-                        <div className="mt-3 flex items-center justify-between pt-2 border-t border-line/60">
-                          <span className="text-base font-bold text-forest">{product.formattedPrice}</span>
-                          <button
-                            onClick={(e) => addToCart(product, 1, e)}
-                            className="rounded-full bg-paper px-3 py-1.5 text-xs font-bold text-forest hover:bg-forest hover:text-white transition"
-                          >
-                            + Add to Cart
-                          </button>
+                          <h3 className="mt-1 font-bold text-base text-ink group-hover:text-terracotta transition">
+                            {product.name}
+                          </h3>
+                          <p className="text-xs text-ink/65">by {product.artisan}</p>
+
+                          <div className="mt-3 flex items-center justify-between pt-2 border-t border-line/60">
+                            <span className="text-base font-bold text-forest">{product.formattedPrice}</span>
+                            <button
+                              onClick={(e) => addToCart(product, 1, e)}
+                              className="rounded-full bg-paper px-3 py-1.5 text-xs font-bold text-forest hover:bg-forest hover:text-white transition"
+                            >
+                              + Add to Cart
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )))}
+                    )))}
                 </div>
               </div>
             </section>
@@ -1953,11 +1953,10 @@ export default function BuyerApp() {
                                 <td className="py-3 text-ink/70">{order.date}</td>
                                 <td className="py-3">
                                   <span
-                                    className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                                      order.status === "Delivered"
+                                    className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${order.status === "Delivered"
                                         ? "bg-emerald-100 text-emerald-800"
                                         : "bg-blue-100 text-blue-800"
-                                    }`}
+                                      }`}
                                   >
                                     {order.status}
                                   </span>
@@ -2026,11 +2025,10 @@ export default function BuyerApp() {
                                 {order.formattedAmount}
                               </span>
                               <span
-                                className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                                  order.status === "Delivered"
+                                className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${order.status === "Delivered"
                                     ? "bg-emerald-100 text-emerald-800"
                                     : "bg-blue-100 text-blue-800"
-                                }`}
+                                  }`}
                               >
                                 {order.status}
                               </span>
