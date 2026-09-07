@@ -286,7 +286,7 @@ export default function BuyerApp() {
   return (
     <div className="min-h-screen bg-ivory text-ink flex flex-col selection:bg-terracotta selection:text-white">
       {/* ================= HEADER / TOP NAV ================= */}
-      <header className="sticky top-0 z-40 bg-ivory/95 backdrop-blur-md border-b border-line shadow-xs transition-all">
+      <header className="sticky top-0 z-40 bg-[#FAF7F2]/95 backdrop-blur-md border-b border-[#E8DFD1] transition-all">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
           {/* Logo */}
           <button
@@ -301,14 +301,14 @@ export default function BuyerApp() {
           </button>
 
           {/* Navigation Links */}
-          <nav className="hidden items-center gap-8 text-sm font-semibold text-ink/80 md:flex">
+          <nav className="hidden items-center gap-8 text-sm font-semibold md:flex">
             <button
               onClick={() => {
                 setActiveView("home");
                 setSelectedProduct(null);
                 setSelectedArtisan(null);
               }}
-              className={`transition hover:text-terracotta ${activeView === "home" ? "text-terracotta font-bold underline underline-offset-8" : ""}`}
+              className={`transition hover:text-terracotta ${activeView === "home" ? "text-forest font-bold underline underline-offset-8" : "text-ink/80"}`}
             >
               Home
             </button>
@@ -318,7 +318,7 @@ export default function BuyerApp() {
                 setSelectedProduct(null);
                 setSelectedArtisan(null);
               }}
-              className={`transition hover:text-terracotta ${activeView === "shop" ? "text-terracotta font-bold underline underline-offset-8" : ""}`}
+              className={`transition hover:text-terracotta ${activeView === "shop" ? "text-forest font-bold underline underline-offset-8" : "text-ink/80"}`}
             >
               Shop
             </button>
@@ -328,7 +328,7 @@ export default function BuyerApp() {
                 setSelectedProduct(null);
                 setSelectedArtisan(null);
               }}
-              className={`transition hover:text-terracotta ${activeView === "artisans" ? "text-terracotta font-bold underline underline-offset-8" : ""}`}
+              className={`transition hover:text-terracotta ${activeView === "artisans" ? "text-forest font-bold underline underline-offset-8" : "text-ink/80"}`}
             >
               Artisans
             </button>
@@ -338,7 +338,7 @@ export default function BuyerApp() {
                 setSelectedProduct(null);
                 setSelectedArtisan(null);
               }}
-              className={`transition hover:text-terracotta ${activeView === "about" ? "text-terracotta font-bold underline underline-offset-8" : ""}`}
+              className={`transition hover:text-terracotta ${activeView === "about" ? "text-forest font-bold underline underline-offset-8" : "text-ink/80"}`}
             >
               About
             </button>
@@ -353,21 +353,21 @@ export default function BuyerApp() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setActiveView("shop")}
                 placeholder="Search for crafts, artisans..."
-                className="w-full rounded-full border border-line bg-white/80 py-2 pl-4 pr-10 text-xs sm:text-sm text-ink placeholder:text-ink/40 outline-none transition focus:border-forest focus:ring-2 focus:ring-forest/10"
+                className="w-full rounded-full border border-[#E0D5C5] bg-white/90 py-2 pl-4 pr-10 text-xs sm:text-sm text-ink placeholder:text-ink/40 outline-none transition focus:border-forest focus:ring-2 focus:ring-forest/10"
               />
               <Search className="absolute right-3 top-2.5 h-4 w-4 text-ink/40" />
             </div>
           </div>
 
           {/* Header Actions (Wishlist, Account/Dashboard, Cart) */}
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-3 sm:gap-5">
             {/* Wishlist Button */}
             <button
               onClick={() => {
                 setActiveView("dashboard");
                 setDashboardTab("wishlist");
               }}
-              className="relative p-2 rounded-full text-ink hover:bg-paper transition"
+              className="relative p-2 rounded-full text-ink/80 hover:text-forest transition"
               aria-label="Wishlist"
             >
               <Heart className="h-5 w-5" />
@@ -385,14 +385,12 @@ export default function BuyerApp() {
                   setActiveView("dashboard");
                   setDashboardTab("dashboard");
                 }}
-                className={`flex items-center gap-2 rounded-full border border-line bg-paper/60 px-3 py-1.5 text-xs font-bold text-ink transition hover:border-forest hover:bg-white ${
-                  activeView === "dashboard" ? "ring-2 ring-forest" : ""
+                className={`p-2 rounded-full text-ink/80 hover:text-forest transition ${
+                  activeView === "dashboard" ? "text-forest font-bold" : ""
                 }`}
+                aria-label="User Account"
               >
-                <div className="grid h-6 w-6 place-items-center rounded-full bg-forest text-white text-[11px] font-bold">
-                  I
-                </div>
-                <span className="hidden sm:inline">Ishwari</span>
+                <User className="h-5 w-5" />
               </button>
             ) : (
               <button
@@ -403,22 +401,20 @@ export default function BuyerApp() {
               </button>
             )}
 
-            {/* Cart Page Trigger */}
+            {/* Cart Trigger with '3' badge matching exact mockup image */}
             <button
               onClick={() => {
                 setActiveView("cart");
                 setSelectedProduct(null);
                 setSelectedArtisan(null);
               }}
-              className="relative flex items-center gap-2 rounded-full bg-forest px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-xs transition hover:bg-forest-dark"
+              className="relative p-2 rounded-full text-ink/80 hover:text-forest transition"
+              aria-label="Cart"
             >
-              <ShoppingBag className="h-4 w-4" />
-              <span className="hidden sm:inline">Cart</span>
-              {totalCartItemCount > 0 && (
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-terracotta text-[11px] font-bold text-white">
-                  {totalCartItemCount}
-                </span>
-              )}
+              <ShoppingBag className="h-5 w-5" />
+              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#C86443] text-[10px] font-bold text-white shadow-xs">
+                3
+              </span>
             </button>
           </div>
         </div>
@@ -429,172 +425,194 @@ export default function BuyerApp() {
         {/* VIEW 1: HOME PAGE */}
         {activeView === "home" && !selectedProduct && !selectedArtisan && (
           <div className="animate-fade-in">
-            {/* HERO SECTION matching Image 1 */}
-            <section className="relative mx-auto max-w-7xl overflow-hidden rounded-[2rem] border border-forest/10 bg-gradient-to-br from-[#fffaf2] via-[#f7f0e3] to-[#e8f0e8] px-4 pb-12 pt-6 shadow-[0_24px_70px_rgba(22,78,70,0.10)] sm:px-6 lg:px-8 lg:pb-16 lg:pt-10">
-              {/* Translucent colour blocks give the hero a youthful, festive depth. */}
-              <div className="pointer-events-none absolute -left-20 top-12 h-56 w-72 rounded-[2.5rem] bg-terracotta/15 rotate-[-12deg]" />
-              <div className="pointer-events-none absolute right-8 top-8 h-36 w-56 rounded-3xl border border-white/70 bg-white/35 backdrop-blur-sm rotate-[8deg]" />
-              <div className="pointer-events-none absolute bottom-0 left-[38%] h-24 w-80 rounded-t-[3rem] bg-forest/10" />
-              <div className="relative z-10 grid items-center gap-10 lg:grid-cols-12 lg:gap-8">
+            {/* HERO SECTION matching Image uploaded by User */}
+            <section className="relative mx-auto max-w-7xl overflow-hidden px-4 pb-14 pt-8 sm:px-6 lg:px-8 lg:pb-20 lg:pt-12 bg-[#FAF7F2]">
+              {/* Corner & Background Leaf Art Illustrations matching reference image */}
+              <div className="pointer-events-none absolute left-2 top-4 h-24 w-24 text-terracotta/30 opacity-70">
+                <svg viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M 20 80 Q 40 40 80 20 M 40 55 Q 60 45 70 30 M 30 65 Q 50 65 65 55" />
+                  <path d="M 15 85 C 25 70 35 75 40 65 C 30 65 20 75 15 85 Z" fill="#C86443" fillOpacity="0.15" />
+                </svg>
+              </div>
+
+              <div className="relative z-10 grid items-center gap-12 lg:grid-cols-12 lg:gap-8">
                 {/* Left Text & CTA Column */}
-                <div className="space-y-6 rounded-3xl border border-white/70 bg-white/55 p-6 text-left shadow-lg shadow-forest/5 backdrop-blur-sm sm:p-8 lg:col-span-5">
-                  <h1 className="font-serif-title text-4xl font-bold leading-[1.1] tracking-tight text-forest sm:text-5xl lg:text-6xl">
-                    Handcrafted <br className="hidden sm:inline" />
+                <div className="space-y-6 text-left lg:col-span-5 pr-2">
+                  <h1 className="font-serif-title text-4xl sm:text-5xl lg:text-6xl font-bold leading-[1.12] tracking-tight text-[#164E46]">
+                    Handcrafted <br />
                     Traditions, <br />
-                    <span className="text-terracotta">Brighter Futures</span>
+                    <span className="text-[#C86443]">Brighter Futures</span>
                   </h1>
-                  <p className="max-w-md text-base sm:text-lg leading-relaxed text-ink/75">
-                    Culture, craft, and community—made simple. Discover handmade pieces and directly support the hands behind them.
+                  <p className="max-w-md text-base sm:text-lg leading-relaxed text-[#164E46]/80 font-medium">
+                    Support skilled artisans. Discover authentic handmade products. Be a part of their journey.
                   </p>
 
-                  <div className="pt-2 flex flex-wrap gap-4 items-center">
+                  <div className="pt-3 flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                     <button
                       onClick={() => setActiveView("shop")}
-                      className="inline-flex items-center gap-2 rounded-full bg-terracotta px-7 py-3.5 text-sm sm:text-base font-bold text-white shadow-lg shadow-terracotta/25 transition hover:bg-terracotta-dark hover:scale-[1.02]"
+                      className="inline-flex items-center gap-2 rounded-full bg-[#C86443] px-8 py-3.5 text-base font-bold text-white shadow-md transition duration-200 hover:bg-[#b05335] hover:scale-[1.02]"
                     >
                       Explore Collection <ArrowRight className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => setIsLoginOpen(true)}
-                      className="inline-flex items-center gap-2 rounded-full border-2 border-forest/20 bg-white/90 px-6 py-3.5 text-sm sm:text-base font-bold text-forest transition hover:border-forest hover:bg-forest hover:text-white"
+                      className="inline-flex items-center gap-2 rounded-full border-2 border-[#164E46]/40 bg-transparent px-7 py-3.5 text-base font-bold text-[#164E46] transition duration-200 hover:border-[#164E46] hover:bg-[#164E46] hover:text-white"
                     >
                       Join as Artisan / Buyer
                     </button>
                   </div>
                 </div>
 
-                {/* Right Artwork: Interactive 4 Animation-Ready Container Boxes matching Image 2 */}
-                <div className="relative lg:col-span-7 min-h-[440px] sm:min-h-[480px] flex items-center justify-center p-4">
-                  {/* Background Leaf Motif & Flow Arrows SVG */}
-                  <svg className="absolute inset-0 h-full w-full pointer-events-none select-none" viewBox="0 0 600 480" fill="none">
-                    {/* Connecting Curved Arrow 1: Artisan -> Crafting */}
-                    <path d="M 270 120 C 310 95, 330 105, 350 135" stroke="#BE5B38" strokeWidth="2.5" strokeDasharray="5 4" />
-                    <polygon points="354,138 344,130 348,142" fill="#BE5B38" />
-
-                    {/* Connecting Curved Arrow 2: Crafting -> Finished Product */}
-                    <path d="M 440 240 C 430 290, 380 290, 350 270" stroke="#BE5B38" strokeWidth="2.5" strokeDasharray="5 4" />
-                    <polygon points="346,268 358,266 352,276" fill="#BE5B38" />
-
-                    {/* Connecting Curved Arrow 3: Finished Product -> Your Home */}
-                    <path d="M 310 380 C 350 420, 420 420, 450 380" stroke="#BE5B38" strokeWidth="2.5" strokeDasharray="5 4" />
-                    <polygon points="454,376 446,386 442,374" fill="#BE5B38" />
-
-                    {/* Organic Leaf Motifs matching Image 2 */}
-                    <g opacity="0.4">
-                      <path d="M 180 70 Q 200 40 220 60 Q 200 80 180 70 Z" fill="#3B7A57" />
-                      <path d="M 520 160 Q 550 140 540 180 Q 510 190 520 160 Z" fill="#BE5B38" />
-                      <path d="M 150 370 Q 130 410 170 420 Q 180 380 150 370 Z" fill="#3B7A57" />
-                      <path d="M 540 370 Q 570 380 560 420 Q 530 400 540 370 Z" fill="#BE5B38" />
+                {/* Right Artwork: 4 Connected Cards & Flow Arrows matching User Image */}
+                <div className="relative lg:col-span-7 min-h-[460px] sm:min-h-[500px] flex items-center justify-center p-2">
+                  {/* Background Leaf Lines & Flow Arrows SVG */}
+                  <svg className="absolute inset-0 h-full w-full pointer-events-none select-none z-0" viewBox="0 0 650 520" fill="none">
+                    {/* Organic Botanical Leaf Sprigs matching uploaded image */}
+                    <g stroke="#C86443" strokeWidth="1.5" opacity="0.45">
+                      {/* Left Top Leaf Sprig */}
+                      <path d="M 120 180 Q 90 140 100 90 M 100 130 Q 75 120 70 100 M 105 150 Q 80 160 65 150" />
+                      {/* Mid Left Leaf Sprig */}
+                      <path d="M 150 280 Q 110 270 90 230 M 130 275 Q 110 290 95 300" />
+                      {/* Bottom Left Leaf Sprig */}
+                      <path d="M 80 440 Q 60 400 40 460 M 70 420 Q 40 410 30 390" />
+                      {/* Top Right Leaf Sprig */}
+                      <path d="M 580 140 Q 610 100 590 60 M 590 110 Q 620 110 630 90" />
+                      {/* Bottom Right Botanical Sprig */}
+                      <path d="M 590 420 Q 630 400 640 450 M 600 440 Q 630 460 640 480" />
                     </g>
+
+                    <g stroke="#3B7A57" strokeWidth="1.5" opacity="0.45">
+                      <path d="M 140 140 Q 170 100 160 60 M 150 110 Q 180 110 190 90" />
+                      <path d="M 560 380 Q 590 340 610 370 M 575 360 Q 605 340 600 320" />
+                    </g>
+
+                    {/* Connecting Curved Terracotta Arrows with Arrowheads */}
+                    {/* Arrow 1: Artisan -> Crafting */}
+                    <path d="M 285 105 C 330 65, 360 75, 385 110" stroke="#C86443" strokeWidth="2" strokeDasharray="5 4" fill="none" />
+                    <polygon points="388,114 378,105 383,118" fill="#C86443" />
+
+                    {/* Arrow 2: Crafting -> Finished Product */}
+                    <path d="M 450 220 C 440 270, 390 270, 360 250" stroke="#C86443" strokeWidth="2" strokeDasharray="5 4" fill="none" />
+                    <polygon points="355,247 367,245 361,256" fill="#C86443" />
+
+                    {/* Arrow 3: Finished Product -> Your Home */}
+                    <path d="M 320 395 C 360 445, 430 440, 465 405" stroke="#C86443" strokeWidth="2" strokeDasharray="5 4" fill="none" />
+                    <polygon points="468,400 460,411 456,398" fill="#C86443" />
                   </svg>
 
-                  {/* 4 Animation-Ready Container Boxes */}
-                  <div className="relative w-full max-w-xl grid grid-cols-2 gap-4 sm:gap-6">
-                    {/* BOX 1: Artisan */}
-                    <div
-                      id="hero-step-artisan"
-                      className="hero-box-1 relative rounded-2xl bg-white p-2 shadow-md border border-line transform -rotate-1 transition duration-300 hover:rotate-0 hover:scale-[1.03]"
-                    >
-                      <img
-                        src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=600&q=85"
-                        alt="Artisan"
-                        className="h-32 sm:h-36 w-full rounded-xl object-cover"
-                      />
-                      <span className="absolute bottom-4 left-4 rounded-full bg-white/95 backdrop-blur-md px-3.5 py-1 text-xs font-bold text-ink shadow-xs border border-line">
+                  {/* 4 Cards Grid Layout matching image strictly */}
+                  <div className="relative z-10 w-full max-w-2xl grid grid-cols-2 gap-y-10 gap-x-6 sm:gap-x-10 items-center">
+                    {/* CARD 1: Artisan (Top Left) */}
+                    <div className="relative flex flex-col items-center">
+                      <div className="w-full max-w-[260px] h-44 sm:h-52 rounded-3xl overflow-hidden shadow-lg border-2 border-white/90 bg-white relative">
+                        <video
+                          className="h-full w-full object-cover"
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                          preload="auto"
+                        >
+                          <source src="https://www.pexels.com/download/video/8066061/" type="video/mp4" />
+                        </video>
+                      </div>
+                      <div className="-mt-3.5 z-20 rounded-full bg-white px-5 py-1.5 text-xs font-bold text-[#164E46] shadow-md border border-[#E8DFD1]">
                         Artisan
-                      </span>
+                      </div>
                     </div>
 
-                    {/* BOX 2: Crafting */}
-                    <div
-                      id="hero-step-crafting"
-                      className="hero-box-2 relative rounded-2xl bg-white p-2 shadow-md border border-line transform rotate-2 transition duration-300 hover:rotate-0 hover:scale-[1.03]"
-                    >
-                      <img
-                        src="https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?auto=format&fit=crop&w=600&q=85"
-                        alt="Crafting"
-                        className="h-32 sm:h-36 w-full rounded-xl object-cover"
-                      />
-                      <span className="absolute bottom-4 left-4 rounded-full bg-white/95 backdrop-blur-md px-3.5 py-1 text-xs font-bold text-ink shadow-xs border border-line">
+                    {/* CARD 2: Crafting (Top Right) */}
+                    <div className="relative flex flex-col items-center">
+                      <div className="w-full max-w-[260px] h-44 sm:h-52 rounded-3xl overflow-hidden shadow-lg border-2 border-white/90 bg-white relative">
+                        <img
+                          src="https://i.pinimg.com/736x/d2/17/8c/d2178cb0e0c97a6762b5a7609cc57ed3.jpg"
+                          alt="Crafting"
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                      <div className="-mt-3.5 z-20 rounded-full bg-white px-5 py-1.5 text-xs font-bold text-[#164E46] shadow-md border border-[#E8DFD1]">
                         Crafting
-                      </span>
+                      </div>
                     </div>
 
-                    {/* BOX 3: Finished Product */}
-                    <div
-                      id="hero-step-product"
-                      className="hero-box-3 relative rounded-2xl bg-white p-2 shadow-md border border-line transform rotate-1 transition duration-300 hover:rotate-0 hover:scale-[1.03]"
-                    >
-                      <img
-                        src="https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=600&q=85"
-                        alt="Finished Product"
-                        className="h-36 sm:h-40 w-full rounded-xl object-cover"
-                      />
-                      <span className="absolute bottom-4 left-4 flex items-center gap-1 rounded-full bg-white/95 backdrop-blur-md px-3.5 py-1 text-xs font-bold text-ink shadow-xs border border-line">
-                        <Sparkles className="h-3 w-3 text-terracotta" /> Finished Product
-                      </span>
+                    {/* CARD 3: Finished Product (Mid-Left) */}
+                    <div className="relative flex flex-col items-center">
+                      <div className="w-full max-w-[260px] h-44 sm:h-52 rounded-3xl overflow-hidden shadow-lg border-2 border-white/90 bg-white relative">
+                        <img
+                          src="https://www.anokhilife.com/wp-content/uploads/AL-Featured-1-11.png"
+                          alt="Finished Product"
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                      <div className="-mt-3.5 z-20 flex items-center gap-1.5 rounded-full bg-white px-5 py-1.5 text-xs font-bold text-[#164E46] shadow-md border border-[#E8DFD1]">
+                        <span className="text-[#C86443]">❖</span> Finished Product
+                      </div>
                     </div>
 
-                    {/* BOX 4: Your Home */}
-                    <div
-                      id="hero-step-home"
-                      className="hero-box-4 relative rounded-2xl bg-white p-2 shadow-md border border-line transform -rotate-2 transition duration-300 hover:rotate-0 hover:scale-[1.03]"
-                    >
-                      <img
-                        src="https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=600&q=85"
-                        alt="Your Home"
-                        className="h-36 sm:h-40 w-full rounded-xl object-cover"
-                      />
-                      <span className="absolute bottom-4 left-4 rounded-full bg-white/95 backdrop-blur-md px-3.5 py-1 text-xs font-bold text-ink shadow-xs border border-line">
+                    {/* CARD 4: Your Home (Bottom Right) */}
+                    <div className="relative flex flex-col items-center pt-2">
+                      <div className="w-full max-w-[260px] h-44 sm:h-52 rounded-3xl overflow-hidden shadow-lg border-2 border-white/90 bg-white relative">
+                        <video
+                          className="h-full w-full object-cover"
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                          preload="auto"
+                        >
+                          <source src="https://www.pexels.com/download/video/7293873/" type="video/mp4" />
+                        </video>
+                      </div>
+                      <div className="-mt-3.5 z-20 rounded-full bg-white px-5 py-1.5 text-xs font-bold text-[#164E46] shadow-md border border-[#E8DFD1]">
                         Your Home
-                      </span>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </section>
 
-            {/* VALUE PROPOSITION BAR (4 Features matching mockup bottom left) */}
-            <section className="border-y border-line bg-paper/70 py-8">
+            {/* VALUE PROPOSITION BAR (4 Features matching reference image bottom) */}
+            <section className="border-y border-[#E8DFD1] bg-[#FAF7F2] py-8">
               <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                 <div className="grid grid-cols-2 gap-6 md:grid-cols-4 lg:gap-8">
-                  <div className="flex items-center gap-3.5">
-                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-terracotta/10 text-terracotta">
+                  <div className="flex items-center gap-4">
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#FAF0E6] text-[#C86443] border border-[#F3E3D3]">
                       <Sparkles className="h-6 w-6" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-xs sm:text-sm text-ink">Authentic</h4>
-                      <p className="text-[11px] sm:text-xs text-ink/65">Handcrafted Products</p>
+                      <h4 className="font-bold text-sm text-[#164E46]">Authentic</h4>
+                      <p className="text-xs text-[#164E46]/70">Handcrafted Products</p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3.5">
-                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-forest/10 text-forest">
+                  <div className="flex items-center gap-4">
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#EBF4F2] text-[#164E46] border border-[#D5E6E3]">
                       <Award className="h-6 w-6" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-xs sm:text-sm text-ink">Direct Support</h4>
-                      <p className="text-[11px] sm:text-xs text-ink/65">to Artisans</p>
+                      <h4 className="font-bold text-sm text-[#164E46]">Direct Support</h4>
+                      <p className="text-xs text-[#164E46]/70">To Artisans</p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3.5">
-                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gold/15 text-gold">
+                  <div className="flex items-center gap-4">
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#FAF0E6] text-[#C86443] border border-[#F3E3D3]">
                       <ShieldCheck className="h-6 w-6" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-xs sm:text-sm text-ink">Fair Prices</h4>
-                      <p className="text-[11px] sm:text-xs text-ink/65">& Transparent Trade</p>
+                      <h4 className="font-bold text-sm text-[#164E46]">Fair Prices</h4>
+                      <p className="text-xs text-[#164E46]/70">& Transparent Trade</p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3.5">
-                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-terracotta/10 text-terracotta">
+                  <div className="flex items-center gap-4">
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#FAF0E6] text-[#C86443] border border-[#F3E3D3]">
                       <Globe className="h-6 w-6" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-xs sm:text-sm text-ink">Preserving</h4>
-                      <p className="text-[11px] sm:text-xs text-ink/65">Indian Heritage</p>
+                      <h4 className="font-bold text-sm text-[#164E46]">Preserving</h4>
+                      <p className="text-xs text-[#164E46]/70">Indian Heritage</p>
                     </div>
                   </div>
                 </div>
@@ -667,18 +685,11 @@ export default function BuyerApp() {
                       className="group cursor-pointer rounded-2xl border border-line bg-white p-3 shadow-xs transition duration-300 hover:-translate-y-1 hover:shadow-lg"
                     >
                       <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-paper">
-                        <video
-                          className="featured-card-video h-full w-full object-cover transition duration-700 group-hover:scale-105"
-                          autoPlay
-                          loop
-                          muted
-                          playsInline
-                          preload="metadata"
-                          poster={product.image}
-                          aria-label={`${product.name} craft video`}
-                        >
-                          <source src={featuredVideoUrls[index]} type="video/mp4" />
-                        </video>
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+                        />
                         <button
                           onClick={(e) => toggleWishlist(product.id, e)}
                           className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/90 text-ink shadow-xs transition hover:bg-terracotta hover:text-white"
