@@ -13,7 +13,8 @@ database/
 │   ├── 001_initial_schema.sql         # 9 MVP tables, constraints, pgvector, triggers, indexes
 │   └── 002_storage_setup.sql          # Supabase Storage bucket 'product-images' & policies
 ├── seeds/
-│   └── 001_seed_data.sql              # Realistic seed data (Hero 100-jute-bag matching scenario)
+│   ├── 001_seed_data.sql              # Realistic seed data (Hero 100-jute-bag matching scenario)
+│   └── 002_prototype_dataset.sql      # Prototype dataset migration (23 users, 20 artisans, 150 products)
 └── scripts/
     ├── verify_schema.py               # Automated validator for schema constraints & seed integrity
     └── test_integration.py           # Cross-module integration test suite (AI, Frontend, Search, DB)
@@ -81,7 +82,8 @@ The database layer serves as the central data contract connecting all other modu
 3. Execute the migrations in order:
    - **Step 1:** Run [`migrations/001_initial_schema.sql`](migrations/001_initial_schema.sql) (Creates extensions, 9 MVP tables, indexes, triggers).
    - **Step 2:** Run [`migrations/002_storage_setup.sql`](migrations/002_storage_setup.sql) (Configures `product-images` storage bucket and access policies).
-   - **Step 3:** Run [`seeds/001_seed_data.sql`](seeds/001_seed_data.sql) (Loads demo data, hero B2B scenario, and embeddings non-destructively).
+   - **Step 3 (Demo):** Run [`seeds/001_seed_data.sql`](seeds/001_seed_data.sql) (Loads initial demo seed data, hero B2B scenario, and embeddings non-destructively).
+   - **Step 4 (Prototype Dataset):** Run [`seeds/002_prototype_dataset.sql`](seeds/002_prototype_dataset.sql) (Loads the complete prototype dataset: 23 users, 20 artisans, 150 products, 150 inventory rows, 2 quote requests, and 5 multi-artisan pool allocations).
 
 ### Method B: CLI / `psql`
 
@@ -90,8 +92,11 @@ The database layer serves as the central data contract connecting all other modu
 psql "$DATABASE_URL" -f database/migrations/001_initial_schema.sql
 psql "$DATABASE_URL" -f database/migrations/002_storage_setup.sql
 
-# Load seed data (idempotent, non-destructive)
+# Load demo seed data (idempotent, non-destructive)
 psql "$DATABASE_URL" -f database/seeds/001_seed_data.sql
+
+# Load prototype dataset (idempotent, non-destructive)
+psql "$DATABASE_URL" -f database/seeds/002_prototype_dataset.sql
 ```
 
 ---
@@ -101,10 +106,63 @@ psql "$DATABASE_URL" -f database/seeds/001_seed_data.sql
 We have provided two automated test suites:
 
 ### Test 1: Schema & Seed Data Validation
-Validates that table schemas, column types, constraints, UUIDs, foreign keys, and the hero scenario are 100% compliant with documentation:
+Validates that table schemas, column types, constraints, UUIDs, foreign keys, the hero scenario, and the prototype dataset are 100% compliant with documentation:
 
 ```bash
 python database/scripts/verify_schema.py
+```
+
+Expected output:
+```text
+=================================================================
+ShilpSetu Database Verification
+=================================================================
+
+--- 1. Migration Sequence & File Order Validation ---
+[PASS] Migrations are strictly ordered, unique, and free of duplicate/conflicting files.
+  - Verified migration: 001_initial_schema.sql
+  - Verified migration: 002_storage_setup.sql
+
+--- 2. Schema Migration Validation (001_initial_schema.sql) ---
+[PASS] Schema matches DATABASE_SCHEMA.md constraints, extensions, and tables.
+  - Verified 9 MVP tables: users, artisans, products, inventory, product_embeddings, quote_requests, quote_request_artisans, reviews, orders
+  - Verified absence of prohibited tables: subscriptions, payments, invoices, transactions, whatsapp, sms
+  - Verified 768-dim pgvector column and HNSW cosine similarity index.
+  - Verified all foreign keys, status checks, and updated_at triggers.
+
+--- 3. Seed Data Validation (001_seed_data.sql) ---
+[PASS] Seed data referential integrity and UUID validation passed.
+  Entity Counts in Seed Data:
+    * users: 10
+    * artisans: 7
+    * products: 10
+    * inventory: 10
+    * product_embeddings: 10
+    * quote_requests: 2
+    * quote_request_artisans: 3
+    * reviews: 2
+    * orders: 2
+    * hero_matched_units: 100
+  - Verified Hero B2B Jute Pool: 40 + 35 + 25 = 100 units.
+  - Verified Frontend Mock Artisan Profile ID integration.
+
+--- 4. Prototype Dataset Migration Validation (002_prototype_dataset.sql) ---
+[PASS] Prototype dataset referential integrity and constraints passed.
+  Entity Counts in Prototype Dataset:
+    * users: 23
+    * artisans: 20
+    * products: 150
+    * inventory: 150
+    * quote_requests: 2
+    * quote_request_artisans: 5
+    * quote_1_matched_units: 100
+    * quote_2_matched_units: 60
+  - Verified Quote 1 Multi-Artisan Pool: 37 + 39 + 24 = 100 units.
+  - Verified Quote 2 Multi-Artisan Pool: 39 + 21 = 60 units.
+
+=================================================================
+RESULT: ALL DATABASE CHECKS PASSED SUCCESSFULLY (100% compliant)
+=================================================================
 ```
 
 ### Test 2: Cross-Module Integration Contract Test
@@ -131,8 +189,11 @@ Testing 5: Search & Matching Schema Contract (DATABASE_SCHEMA.md Section 14)...
   [PASS] Database schema exposes all required searchable, ranking, and capacity fields.
 Testing 6: Auth Identity Mapping Contract (API_CONTRACT.md Section 23)...
   [PASS] users and artisans schema adheres to API_CONTRACT.md Section 23 auth identity mapping.
+
 Testing 7: Live Supabase Database Connection...
+  DATABASE_URL not set in local environment (Offline test mode).
   [INFO] Offline contract verification completed with 100% compliance.
+
 =================================================================
 RESULT: ALL INTEGRATION CONTRACTS PASSED (READY FOR INTEGRATION)
 =================================================================
