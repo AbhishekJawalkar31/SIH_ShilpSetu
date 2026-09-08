@@ -115,8 +115,8 @@ class GeminiIntentExtractor:
             )
         except asyncio.TimeoutError:
             raise GeminiIntentTimeoutError("Gemini intent extraction timed out.") from None
-        except Exception:
-            raise GeminiIntentRequestError("Gemini intent extraction failed.") from None
+        except Exception as exc:
+            raise GeminiIntentRequestError(f"Gemini intent extraction failed: {exc}") from exc
 
         raw_data = self._parse_response(response)
 

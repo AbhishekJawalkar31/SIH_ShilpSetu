@@ -7,12 +7,22 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.security import create_access_token
 from app.main import app
-from app.schemas.order import OrderItemResponse, OrderListResponse, OrderResponse, QuoteAcceptResponse
+from app.schemas.order import (
+    DirectOrderCreateRequest,
+    DirectOrderItemRequest,
+    OrderItemResponse,
+    OrderListResponse,
+    OrderResponse,
+    QuoteAcceptResponse,
+)
 from app.services.order.repository import (
     InsufficientInventoryError,
+    InvalidOrderItemsError,
     NoAcceptableAllocationError,
     OrderAlreadyExistsError,
+    ProductNotFoundError,
     QuoteAlreadyAcceptedError,
     QuoteNotFoundError,
 )
@@ -178,3 +188,138 @@ def test_get_order_items(client: TestClient) -> None:
         assert response.status_code == 200
         assert len(response.json()) == 1
         assert response.json()[0]["quantity"] == 25
+
+
+def test_create_direct_order_success(client: TestClient) -> None:
+    buyer_id = uuid4()
+    order_id = uuid4()
+    product_id = uuid4()
+    artisan_id = uuid4()
+    now = datetime.now(timezone.utc)
+    token = create_access_token({"sub": str(buyer_id), "role": "buyer"})
+
+    mock_order = OrderResponse(
+        id=order_id,
+        buyer_id=buyer_id,
+        artisan_id=artisan_id,
+        product_id=product_id,
+        quantity=3,
+        unit_price=450.0,
+        total_price=1350.0,
+        status="pending",
+        created_at=now,
+        updated_at=now,
+        items=[
+            OrderItemResponse(
+                id=uuid4(),
+                order_id=order_id,
+                artisan_id=artisan_id,
+                product_id=product_id,
+                quantity=3,
+                unit_price=450.0,
+                total_price=1350.0,
+                created_at=now,
+                artisan_business_name="Jaipur Crafts",
+                product_title="Blue Pottery Mug",
+            )
+        ],
+    )
+
+    with patch("app.api.orders._service.create_direct_order", new=AsyncMock(return_value=mock_order)) as mock_create:
+        response = client.post(
+            "/api/orders/direct",
+            json={
+                "items": [{"product_id": str(product_id), "quantity": 3}],
+                "shipping_address": "123 Craft Lane, Jaipur",
+                "notes": "Fragile items",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["id"] == str(order_id)
+        assert data["buyer_id"] == str(buyer_id)
+        assert data["status"] == "pending"
+        assert data["quantity"] == 3
+        assert data["total_price"] == 1350.0
+        assert len(data["items"]) == 1
+        assert data["items"][0]["product_title"] == "Blue Pottery Mug"
+        mock_create.assert_awaited_once_with(
+            buyer_id=buyer_id,
+            items=[(product_id, 3)],
+            shipping_address="123 Craft Lane, Jaipur",
+            notes="Fragile items",
+        )
+
+
+def test_create_direct_order_unauthenticated(client: TestClient) -> None:
+    product_id = uuid4()
+    response = client.post(
+        "/api/orders/direct",
+        json={"items": [{"product_id": str(product_id), "quantity": 1}]},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"]["code"] == "AUTHENTICATION_REQUIRED"
+
+
+def test_create_direct_order_artisan_forbidden(client: TestClient) -> None:
+    artisan_user_id = uuid4()
+    token = create_access_token({"sub": str(artisan_user_id), "role": "artisan"})
+    product_id = uuid4()
+    response = client.post(
+        "/api/orders/direct",
+        json={"items": [{"product_id": str(product_id), "quantity": 1}]},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "INSUFFICIENT_ROLE"
+
+
+def test_create_direct_order_product_not_found(client: TestClient) -> None:
+    buyer_id = uuid4()
+    product_id = uuid4()
+    token = create_access_token({"sub": str(buyer_id), "role": "buyer"})
+
+    with patch(
+        "app.api.orders._service.create_direct_order",
+        new=AsyncMock(side_effect=ProductNotFoundError(f"Product '{product_id}' not found or not published.")),
+    ):
+        response = client.post(
+            "/api/orders/direct",
+            json={"items": [{"product_id": str(product_id), "quantity": 2}]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"]["code"] == "PRODUCT_NOT_FOUND"
+
+
+def test_create_direct_order_insufficient_inventory(client: TestClient) -> None:
+    buyer_id = uuid4()
+    product_id = uuid4()
+    token = create_access_token({"sub": str(buyer_id), "role": "buyer"})
+
+    with patch(
+        "app.api.orders._service.create_direct_order",
+        new=AsyncMock(side_effect=InsufficientInventoryError("Insufficient stock for product.")),
+    ):
+        response = client.post(
+            "/api/orders/direct",
+            json={"items": [{"product_id": str(product_id), "quantity": 999}]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "INVENTORY_INSUFFICIENT"
+
+
+def test_create_direct_order_invalid_items(client: TestClient) -> None:
+    buyer_id = uuid4()
+    token = create_access_token({"sub": str(buyer_id), "role": "buyer"})
+
+    # Empty items list (schema level validation)
+    response = client.post(
+        "/api/orders/direct",
+        json={"items": []},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 422
+

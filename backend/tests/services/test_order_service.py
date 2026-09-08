@@ -10,10 +10,12 @@ import pytest
 from app.schemas.order import OrderResponse, QuoteAcceptResponse
 from app.services.order.repository import (
     InsufficientInventoryError,
+    InvalidOrderItemsError,
     NoAcceptableAllocationError,
     OrderAlreadyExistsError,
     OrderNotFoundError,
     OrderRepository,
+    ProductNotFoundError,
     QuoteAlreadyAcceptedError,
     QuoteNotFoundError,
 )
@@ -320,3 +322,163 @@ async def test_accept_quote_insufficient_inventory() -> None:
         await service.accept_quote(quote_id)
 
     assert fake_tx.rolled_back is True
+
+
+@pytest.mark.anyio
+async def test_create_direct_order_success() -> None:
+    now = datetime.now(timezone.utc)
+    buyer_id = uuid4()
+    artisan_id = uuid4()
+    artisan_user_id = uuid4()
+    product_id = uuid4()
+    order_id = uuid4()
+    item_id = uuid4()
+
+    fake_cursor = FakeCursor(
+        fetch_sequence=[
+            # 1. Fetch product
+            {
+                "id": product_id,
+                "artisan_id": artisan_id,
+                "title": "Terracotta Pot",
+                "price": 350.0,
+                "status": "published",
+                "artisan_user_id": artisan_user_id,
+                "artisan_business_name": "Pottery Hub",
+            },
+            # 2. Inventory deduction
+            {"available_quantity": 48},
+            # 3. Insert order
+            {
+                "id": order_id,
+                "buyer_id": buyer_id,
+                "artisan_id": artisan_id,
+                "product_id": product_id,
+                "quote_request_id": None,
+                "quantity": 2,
+                "unit_price": 350.0,
+                "total_price": 700.0,
+                "status": "pending",
+                "created_at": now,
+                "updated_at": now,
+            },
+            # 4. Insert order item
+            {
+                "id": item_id,
+                "order_id": order_id,
+                "artisan_id": artisan_id,
+                "product_id": product_id,
+                "quantity": 2,
+                "unit_price": 350.0,
+                "total_price": 700.0,
+                "created_at": now,
+            },
+        ]
+    )
+    fake_tx = FakeTransactionContext()
+    fake_conn = FakeConnection(fake_cursor, fake_tx)
+    fake_pool = FakePoolManager(fake_conn)
+
+    repo = OrderRepository(pool_manager=fake_pool)  # type: ignore[arg-type]
+    service = OrderService(repository=repo)
+
+    result = await service.create_direct_order(
+        buyer_id=buyer_id,
+        items=[(product_id, 2)],
+        shipping_address="789 Market Rd",
+        notes="Please pack securely",
+    )
+
+    assert result.id == order_id
+    assert result.buyer_id == buyer_id
+    assert result.status == "pending"
+    assert result.quantity == 2
+    assert result.total_price == 700.0
+    assert len(result.items) == 1
+    assert result.items[0].product_title == "Terracotta Pot"
+    assert result.items[0].artisan_business_name == "Pottery Hub"
+    assert fake_tx.entered is True
+    assert fake_tx.exited is True
+    assert fake_tx.rolled_back is False
+
+
+@pytest.mark.anyio
+async def test_create_direct_order_product_not_found() -> None:
+    buyer_id = uuid4()
+    product_id = uuid4()
+
+    fake_cursor = FakeCursor(
+        fetch_sequence=[
+            None,  # Product not found
+        ]
+    )
+    fake_tx = FakeTransactionContext()
+    fake_conn = FakeConnection(fake_cursor, fake_tx)
+    fake_pool = FakePoolManager(fake_conn)
+
+    repo = OrderRepository(pool_manager=fake_pool)  # type: ignore[arg-type]
+    service = OrderService(repository=repo)
+
+    with pytest.raises(ProductNotFoundError):
+        await service.create_direct_order(
+            buyer_id=buyer_id,
+            items=[(product_id, 1)],
+        )
+
+    assert fake_tx.rolled_back is True
+
+
+@pytest.mark.anyio
+async def test_create_direct_order_insufficient_stock() -> None:
+    buyer_id = uuid4()
+    product_id = uuid4()
+    artisan_id = uuid4()
+
+    fake_cursor = FakeCursor(
+        fetch_sequence=[
+            # 1. Product found
+            {
+                "id": product_id,
+                "artisan_id": artisan_id,
+                "title": "Terracotta Pot",
+                "price": 350.0,
+                "status": "published",
+                "artisan_user_id": uuid4(),
+                "artisan_business_name": "Pottery Hub",
+            },
+            # 2. Inventory deduction returns None (insufficient stock)
+            None,
+        ]
+    )
+    fake_tx = FakeTransactionContext()
+    fake_conn = FakeConnection(fake_cursor, fake_tx)
+    fake_pool = FakePoolManager(fake_conn)
+
+    repo = OrderRepository(pool_manager=fake_pool)  # type: ignore[arg-type]
+    service = OrderService(repository=repo)
+
+    with pytest.raises(InsufficientInventoryError):
+        await service.create_direct_order(
+            buyer_id=buyer_id,
+            items=[(product_id, 100)],
+        )
+
+    assert fake_tx.rolled_back is True
+
+
+@pytest.mark.anyio
+async def test_create_direct_order_empty_items() -> None:
+    fake_cursor = FakeCursor()
+    fake_tx = FakeTransactionContext()
+    fake_conn = FakeConnection(fake_cursor, fake_tx)
+    fake_pool = FakePoolManager(fake_conn)
+
+    repo = OrderRepository(pool_manager=fake_pool)  # type: ignore[arg-type]
+    service = OrderService(repository=repo)
+
+    with pytest.raises(InvalidOrderItemsError):
+        await service.create_direct_order(
+            buyer_id=uuid4(),
+            items=[],
+        )
+

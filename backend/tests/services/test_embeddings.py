@@ -145,7 +145,7 @@ def test_correct_model_passed(monkeypatch: pytest.MonkeyPatch) -> None:
 
     result = asyncio.run(provider.embed_query("ceramic cups"))
 
-    assert models.calls[0]["model"] == "text-embedding-004"
+    assert models.calls[0]["model"] == "gemini-embedding-001"
     assert models.calls[0]["contents"] == "ceramic cups"
     assert len(result) == 768
 

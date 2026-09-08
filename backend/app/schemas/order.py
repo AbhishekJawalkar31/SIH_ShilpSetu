@@ -65,3 +65,23 @@ class QuoteAcceptResponse(BaseModel):
     order: OrderResponse
     quote_id: UUID
     message: str = "Quote successfully accepted and converted to order."
+
+
+class DirectOrderItemRequest(BaseModel):
+    """Line item for direct customer order creation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    product_id: UUID
+    quantity: int = Field(gt=0, description="Quantity of product to purchase")
+
+
+class DirectOrderCreateRequest(BaseModel):
+    """Customer request for direct order checkout."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[DirectOrderItemRequest] = Field(min_length=1, description="List of items to purchase")
+    shipping_address: str | None = Field(default=None, description="Optional customer delivery address")
+    notes: str | None = Field(default=None, description="Optional customer order instructions")
+

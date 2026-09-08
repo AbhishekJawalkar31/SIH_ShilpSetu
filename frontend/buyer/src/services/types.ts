@@ -4,6 +4,45 @@ export type AllocationStatus = "matched" | "contacted" | "quoted" | "accepted" |
 export type OrderStatus = "pending" | "confirmed" | "processing" | "completed" | "cancelled";
 
 // ---------------------------------------------------------------------------
+// 0. Authentication
+// ---------------------------------------------------------------------------
+export type UserRole = "artisan" | "buyer" | "admin";
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  role: UserRole;
+  artisan_id?: string | null;
+  is_active: boolean;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  user: AuthUser;
+}
+
+export interface UserLoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface UserRegisterRequest {
+  name: string;
+  email: string;
+  password: string;
+  role: "buyer" | "artisan";
+  phone?: string;
+  business_name?: string;
+  craft_type?: string;
+  city?: string;
+  state?: string;
+}
+
+// ---------------------------------------------------------------------------
 // 1. Products
 // ---------------------------------------------------------------------------
 export interface Product {
@@ -82,6 +121,15 @@ export interface SearchResultItem {
   available_quantity: number;
   production_capacity: number;
   match_score: number;
+  image_url?: string | null;
+  category?: string | null;
+  craft_type?: string | null;
+  description?: string | null;
+  material?: string | null;
+  tags?: string[] | null;
+  currency?: string;
+  artisan_business_name?: string | null;
+  artisan_location?: string | null;
 }
 
 export interface SearchRequest {
@@ -101,6 +149,8 @@ export interface SearchResponse {
 export interface BulkMatchRequest {
   query: string;
   quantity: number;
+  budget_per_unit?: number;
+  location?: string;
 }
 
 export interface ArtisanPoolItem {
@@ -188,6 +238,17 @@ export interface OrderItemResponse {
   product_title?: string | null;
 }
 
+export interface DirectOrderItemRequest {
+  product_id: string;
+  quantity: number;
+}
+
+export interface DirectOrderCreateRequest {
+  items: DirectOrderItemRequest[];
+  shipping_address?: string | null;
+  notes?: string | null;
+}
+
 export interface OrderResponse {
   id: string;
   buyer_id: string;
@@ -197,6 +258,7 @@ export interface OrderResponse {
   quantity: number;
   unit_price: number;
   total_price: number;
+  currency?: string;
   status: OrderStatus;
   created_at: string;
   updated_at: string;

@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.schemas.order import (
+    DirectOrderCreateRequest,
     OrderItemResponse,
     OrderListResponse,
     OrderResponse,
@@ -13,14 +14,16 @@ from app.schemas.order import (
 )
 from app.services.order.repository import (
     InsufficientInventoryError,
+    InvalidOrderItemsError,
     NoAcceptableAllocationError,
     OrderAlreadyExistsError,
+    ProductNotFoundError,
     QuoteAlreadyAcceptedError,
     QuoteNotFoundError,
 )
 from app.services.order.service import OrderService
 
-from app.core.dependencies import get_current_user_optional
+from app.core.dependencies import get_current_user, get_current_user_optional
 from app.schemas.auth import AuthUser
 
 logger = logging.getLogger(__name__)
@@ -81,6 +84,64 @@ async def accept_quote(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"code": "INTERNAL_ERROR", "message": "An unexpected error occurred while accepting the quote."},
+        ) from exc
+
+
+@router.post(
+    "/orders/direct",
+    response_model=OrderResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a direct customer D2C order from cart items",
+)
+async def create_direct_order(
+    body: DirectOrderCreateRequest,
+    current_user: AuthUser = Depends(get_current_user),
+) -> OrderResponse:
+    """
+    Create a direct customer order from cart items:
+    - Requires authenticated buyer or admin
+    - Validates products exist and are published
+    - Validates and transactionally decrements inventory
+    - Computes real totals from product catalog prices
+    - Creates order and order line items
+    - Generates in-app notifications
+    - Returns the created order in 'pending' status
+    """
+    if current_user.role not in ("buyer", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "INSUFFICIENT_ROLE", "message": "Only buyers or administrators can place direct orders."},
+        )
+
+    item_tuples = [(item.product_id, item.quantity) for item in body.items]
+
+    try:
+        return await _service.create_direct_order(
+            buyer_id=current_user.id,
+            items=item_tuples,
+            shipping_address=body.shipping_address,
+            notes=body.notes,
+        )
+    except ProductNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "PRODUCT_NOT_FOUND", "message": str(exc)},
+        ) from exc
+    except InsufficientInventoryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "INVENTORY_INSUFFICIENT", "message": str(exc)},
+        ) from exc
+    except InvalidOrderItemsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_ORDER_ITEMS", "message": str(exc)},
+        ) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error creating direct order: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "INTERNAL_ERROR", "message": "An unexpected error occurred while placing the order."},
         ) from exc
 
 

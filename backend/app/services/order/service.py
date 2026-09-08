@@ -48,3 +48,18 @@ class OrderService:
 
     async def get_order_items(self, order_id: UUID) -> list[OrderItemResponse]:
         return await self._repo.get_order_items(order_id=order_id)
+
+    async def create_direct_order(
+        self,
+        buyer_id: UUID,
+        items: list[tuple[UUID, int]],
+        shipping_address: str | None = None,
+        notes: str | None = None,
+    ) -> OrderResponse:
+        return await self._repo.create_direct_order(
+            buyer_id=buyer_id,
+            items=items,
+            shipping_address=shipping_address,
+            notes=notes,
+        )
+

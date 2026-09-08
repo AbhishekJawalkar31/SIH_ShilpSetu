@@ -7,6 +7,11 @@ from psycopg.rows import dict_row
 
 from app.db.connection import DatabasePoolManager, get_pool_manager
 from app.db.exceptions import DatabaseError, DatabaseQueryError
+from app.db.exceptions import (
+    DatabaseConnectionError,
+    DatabaseError,
+    DatabaseQueryError,
+)
 from app.schemas.order import (
     OrderItemResponse,
     OrderListResponse,
@@ -41,6 +46,14 @@ class InsufficientInventoryError(OrderError):
 
 class OrderNotFoundError(OrderError):
     """Raised when an order is not found by ID."""
+
+
+class ProductNotFoundError(OrderError):
+    """Raised when a direct order references a non-existent or unpublished product."""
+
+
+class InvalidOrderItemsError(OrderError):
+    """Raised when direct order items list is empty or contains invalid items."""
 
 
 class OrderRepository:
@@ -347,6 +360,13 @@ class OrderRepository:
                         )
         except (QuoteNotFoundError, QuoteAlreadyAcceptedError, OrderAlreadyExistsError, NoAcceptableAllocationError, InsufficientInventoryError):
             raise
+        except DatabaseConnectionError as exc:
+            if exc.__cause__ and isinstance(
+                exc.__cause__,
+                (QuoteNotFoundError, QuoteAlreadyAcceptedError, OrderAlreadyExistsError, NoAcceptableAllocationError, InsufficientInventoryError),
+            ):
+                raise exc.__cause__
+            raise
         except DatabaseError:
             raise
         except Exception as exc:
@@ -541,3 +561,271 @@ class OrderRepository:
                     return [OrderItemResponse.model_validate(row) for row in rows]
         except Exception as exc:
             raise DatabaseQueryError(f"Failed to fetch order items for order {order_id}: {exc}") from exc
+
+    async def create_direct_order(
+        self,
+        buyer_id: UUID,
+        items: list[tuple[UUID, int]],
+        shipping_address: str | None = None,
+        notes: str | None = None,
+    ) -> OrderResponse:
+        """
+        Execute atomic creation of a direct customer D2C order:
+        1. Validate items list is non-empty and quantities are positive
+        2. Consolidate requested quantities by product_id
+        3. For each product:
+           - Fetch and lock product details (must exist and status = 'published')
+           - Atomically check and decrement inventory (UPDATE inventory SET ... RETURNING available_quantity)
+           - Compute unit_price and line total_price from actual product price
+        4. Calculate total quantity, total order amount, and average unit price
+        5. Insert orders row with status='pending', quote_request_id=NULL
+        6. Insert order_items rows for each product
+        7. Insert customer and artisan in-app notifications
+        8. Return full OrderResponse with line items
+        All operations occur inside a single atomic database transaction.
+        """
+        if not items:
+            raise InvalidOrderItemsError("Direct order must contain at least one item.")
+
+        aggregated_quantities: dict[UUID, int] = {}
+        for pid, qty in items:
+            if qty <= 0:
+                raise InvalidOrderItemsError(f"Item quantity must be greater than zero. Received: {qty}")
+            aggregated_quantities[pid] = aggregated_quantities.get(pid, 0) + qty
+
+        fetch_product_query = """
+            SELECT 
+                p.id,
+                p.artisan_id,
+                p.title,
+                p.price,
+                p.status,
+                a.user_id AS artisan_user_id,
+                a.business_name AS artisan_business_name
+            FROM products p
+            JOIN artisans a ON p.artisan_id = a.id
+            WHERE p.id = %(product_id)s
+            FOR UPDATE;
+        """
+
+        decrement_inventory_query = """
+            UPDATE inventory
+            SET available_quantity = available_quantity - %(quantity)s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE product_id = %(product_id)s AND available_quantity >= %(quantity)s
+            RETURNING available_quantity;
+        """
+
+        insert_order_query = """
+            INSERT INTO orders (
+                buyer_id,
+                artisan_id,
+                product_id,
+                quote_request_id,
+                quantity,
+                unit_price,
+                total_price,
+                status
+            ) VALUES (
+                %(buyer_id)s,
+                %(artisan_id)s,
+                %(product_id)s,
+                NULL,
+                %(quantity)s,
+                %(unit_price)s,
+                %(total_price)s,
+                'pending'
+            ) RETURNING 
+                id,
+                buyer_id,
+                artisan_id,
+                product_id,
+                quote_request_id,
+                quantity,
+                unit_price,
+                total_price,
+                status,
+                created_at,
+                updated_at;
+        """
+
+        insert_order_item_query = """
+            INSERT INTO order_items (
+                order_id,
+                artisan_id,
+                product_id,
+                quantity,
+                unit_price,
+                total_price
+            ) VALUES (
+                %(order_id)s,
+                %(artisan_id)s,
+                %(product_id)s,
+                %(quantity)s,
+                %(unit_price)s,
+                %(total_price)s
+            ) RETURNING 
+                id,
+                order_id,
+                artisan_id,
+                product_id,
+                quantity,
+                unit_price,
+                total_price,
+                created_at;
+        """
+
+        insert_notification_query = """
+            INSERT INTO notifications (
+                user_id,
+                type,
+                title,
+                message,
+                reference_type,
+                reference_id
+            ) VALUES (
+                %(user_id)s,
+                %(type)s,
+                %(title)s,
+                %(message)s,
+                %(reference_type)s,
+                %(reference_id)s
+            );
+        """
+
+        try:
+            async with self._pool_manager.connection() as conn:
+                async with conn.transaction():
+                    async with conn.cursor(row_factory=dict_row) as cursor:
+                        processed_items = []
+                        total_quantity = 0
+                        total_price = 0.0
+                        distinct_artisans: dict[UUID, UUID] = {}
+
+                        for product_id, qty in aggregated_quantities.items():
+                            # 1. Fetch & lock product
+                            await cursor.execute(fetch_product_query, {"product_id": product_id})
+                            prod_row = await cursor.fetchone()
+                            if prod_row is None or prod_row["status"] != "published":
+                                raise ProductNotFoundError(
+                                    f"Product '{product_id}' not found or not published."
+                                )
+
+                            unit_price = float(prod_row["price"]) if prod_row["price"] is not None else 0.0
+                            item_total = round(unit_price * qty, 2)
+
+                            # 2. Check and deduct inventory atomically
+                            await cursor.execute(
+                                decrement_inventory_query,
+                                {"product_id": product_id, "quantity": qty},
+                            )
+                            inv_row = await cursor.fetchone()
+                            if inv_row is None:
+                                raise InsufficientInventoryError(
+                                    f"Insufficient stock for product '{prod_row['title']}' ({product_id}). Requested: {qty}."
+                                )
+
+                            artisan_id = prod_row["artisan_id"]
+                            distinct_artisans[artisan_id] = prod_row["artisan_user_id"]
+
+                            total_quantity += qty
+                            total_price += item_total
+
+                            processed_items.append({
+                                "product_id": product_id,
+                                "artisan_id": artisan_id,
+                                "product_title": prod_row["title"],
+                                "artisan_business_name": prod_row["artisan_business_name"],
+                                "quantity": qty,
+                                "unit_price": unit_price,
+                                "total_price": item_total,
+                            })
+
+                        # Order level attributes
+                        total_price = round(total_price, 2)
+                        avg_unit_price = round(total_price / total_quantity, 2) if total_quantity > 0 else 0.0
+                        order_artisan_id = list(distinct_artisans.keys())[0] if len(distinct_artisans) == 1 else None
+                        order_product_id = processed_items[0]["product_id"] if len(processed_items) == 1 else None
+
+                        # 3. Insert order
+                        await cursor.execute(
+                            insert_order_query,
+                            {
+                                "buyer_id": buyer_id,
+                                "artisan_id": order_artisan_id,
+                                "product_id": order_product_id,
+                                "quantity": total_quantity,
+                                "unit_price": avg_unit_price,
+                                "total_price": total_price,
+                            },
+                        )
+                        order_row = await cursor.fetchone()
+                        order_id = order_row["id"]
+
+                        # 4. Insert order items
+                        created_order_items: list[OrderItemResponse] = []
+                        for item in processed_items:
+                            await cursor.execute(
+                                insert_order_item_query,
+                                {
+                                    "order_id": order_id,
+                                    "artisan_id": item["artisan_id"],
+                                    "product_id": item["product_id"],
+                                    "quantity": item["quantity"],
+                                    "unit_price": item["unit_price"],
+                                    "total_price": item["total_price"],
+                                },
+                            )
+                            item_row = await cursor.fetchone()
+                            item_dict = dict(item_row)
+                            item_dict["artisan_business_name"] = item["artisan_business_name"]
+                            item_dict["product_title"] = item["product_title"]
+                            created_order_items.append(OrderItemResponse.model_validate(item_dict))
+
+                        # 5. Insert in-app notifications
+                        short_order_id = str(order_id)[:8]
+                        # Customer notification
+                        await cursor.execute(
+                            insert_notification_query,
+                            {
+                                "user_id": buyer_id,
+                                "type": "order_created",
+                                "title": "Order Placed Successfully",
+                                "message": f"Your direct order #{short_order_id} ({total_quantity} items, ₹ {total_price:,.2f}) has been placed and is pending confirmation.",
+                                "reference_type": "order",
+                                "reference_id": order_id,
+                            },
+                        )
+
+                        # Artisan notifications
+                        for art_id, art_user_id in distinct_artisans.items():
+                            if art_user_id:
+                                await cursor.execute(
+                                    insert_notification_query,
+                                    {
+                                        "user_id": art_user_id,
+                                        "type": "new_direct_order",
+                                        "title": "New Customer Order",
+                                        "message": f"You received a new direct customer order #{short_order_id}.",
+                                        "reference_type": "order",
+                                        "reference_id": order_id,
+                                    },
+                                )
+
+                        order_dict = dict(order_row)
+                        order_dict["items"] = created_order_items
+                        return OrderResponse.model_validate(order_dict)
+        except (ProductNotFoundError, InsufficientInventoryError, InvalidOrderItemsError):
+            raise
+        except DatabaseConnectionError as exc:
+            if exc.__cause__ and isinstance(
+                exc.__cause__,
+                (ProductNotFoundError, InsufficientInventoryError, InvalidOrderItemsError),
+            ):
+                raise exc.__cause__
+            raise
+        except DatabaseError:
+            raise
+        except Exception as exc:
+            raise DatabaseQueryError(f"Failed to create direct order: {exc}") from exc
+

@@ -32,6 +32,7 @@ export interface Product {
   };
   reviewsList?: Review[];
   image: string;
+  fallbackImage?: string;
   gallery: string[];
   badges: string[];
   specs: {

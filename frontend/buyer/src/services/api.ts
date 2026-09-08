@@ -2,6 +2,8 @@ import {
   ArtisanProfile,
   BulkMatchRequest,
   BulkMatchResponse,
+  DirectOrderCreateRequest,
+  DirectOrderItemRequest,
   NotificationFilterParams,
   NotificationListResponse,
   NotificationResponse,
@@ -242,6 +244,14 @@ export async function getOrder(orderId: string, token?: string): Promise<OrderRe
 export async function getOrderItems(orderId: string, token?: string): Promise<OrderItemResponse[]> {
   return request<OrderItemResponse[]>(`/api/orders/${orderId}/items`, {
     method: "GET",
+    token,
+  });
+}
+
+export async function createDirectOrder(body: DirectOrderCreateRequest, token?: string): Promise<OrderResponse> {
+  return request<OrderResponse>("/api/orders/direct", {
+    method: "POST",
+    body: JSON.stringify(body),
     token,
   });
 }

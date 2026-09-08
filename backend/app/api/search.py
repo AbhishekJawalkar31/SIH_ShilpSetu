@@ -89,6 +89,15 @@ class SearchResultItem(BaseModel):
     available_quantity: int
     production_capacity: int
     match_score: float
+    image_url: str | None = None
+    category: str | None = None
+    craft_type: str | None = None
+    description: str | None = None
+    material: str | None = None
+    tags: list[str] | None = None
+    currency: str = "INR"
+    artisan_business_name: str | None = None
+    artisan_location: str | None = None
 
 
 class SearchResponse(BaseModel):
@@ -156,6 +165,15 @@ async def search_products(
             available_quantity=rc.candidate.available_quantity,
             production_capacity=rc.candidate.production_capacity,
             match_score=rc.match_score,
+            image_url=rc.candidate.image_url,
+            category=rc.candidate.category,
+            craft_type=rc.candidate.craft_type,
+            description=rc.candidate.description,
+            material=rc.candidate.material,
+            tags=rc.candidate.tags,
+            currency=rc.candidate.currency,
+            artisan_business_name=rc.candidate.artisan_business_name,
+            artisan_location=rc.candidate.artisan_location,
         )
         for rc in search_result.ranked_candidates
     ]

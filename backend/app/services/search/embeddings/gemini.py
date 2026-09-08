@@ -104,8 +104,8 @@ class GeminiEmbeddingProvider:
             )
         except asyncio.TimeoutError:
             raise GeminiEmbeddingTimeoutError("Gemini embedding request timed out.") from None
-        except Exception:
-            raise GeminiEmbeddingRequestError("Gemini embedding request failed.") from None
+        except Exception as exc:
+            raise GeminiEmbeddingRequestError(f"Gemini embedding request failed: {exc}") from exc
 
         return self._extract_vector(response)
 

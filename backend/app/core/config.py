@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables or a local .env file."""
 
     gemini_api_key: str | None = None
-    gemini_model: str = "gemini-2.5-flash"
-    gemini_embedding_model: str = "text-embedding-004"
+    gemini_model: str = "gemini-3.6-flash"
+    gemini_embedding_model: str = "gemini-embedding-001"
     embedding_dimension: int = 768
     sarvam_api_key: str | None = None
     supabase_url: str | None = None

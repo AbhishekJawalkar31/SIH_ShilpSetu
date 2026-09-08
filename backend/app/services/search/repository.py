@@ -168,13 +168,13 @@ class SearchProductRepository:
                 a.state AS artisan_state,
                 a.country AS artisan_country,
                 COALESCE(a.rating, 0.0) AS artisan_rating,
-                (pe.embedding <=> %(query_embedding)s) AS distance
+                (pe.embedding <=> %(query_embedding)s::vector) AS distance
             FROM product_embeddings pe
             JOIN products p ON pe.product_id = p.id
             LEFT JOIN inventory i ON i.product_id = p.id
             LEFT JOIN artisans a ON p.artisan_id = a.id
             WHERE p.status = 'published'
-            ORDER BY pe.embedding <=> %(query_embedding)s ASC
+            ORDER BY pe.embedding <=> %(query_embedding)s::vector ASC
             LIMIT %(limit)s;
         """
 
